@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Codigo"><UniqueIdentifier>{a1b2c3d4-0001-4000-8000-000000000001}</UniqueIdentifier></Filter>
+    <Filter Include="Encabezados"><UniqueIdentifier>{a1b2c3d4-0002-4000-8000-000000000002}</UniqueIdentifier></Filter>
+    <Filter Include="Shaders"><UniqueIdentifier>{a1b2c3d4-0003-4000-8000-000000000003}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Shader.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Mesh.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Font.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Texturas.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Model.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Renderer.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Estadio.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Camara.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Audio.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Personaje.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Animacion.cpp"><Filter>Codigo</Filter></ClCompile>
+    <ClCompile Include="Partido.cpp"><Filter>Codigo</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Utils.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Config.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Shader.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Mesh.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Font.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Texturas.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Model.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Renderer.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Estadio.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Camara.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Audio.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Personaje.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Animacion.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="Partido.h"><Filter>Encabezados</Filter></ClInclude>
+    <ClInclude Include="SOIL2\SOIL2.h"><Filter>Encabezados</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shader\brillo.frag"><Filter>Shaders</Filter></None>
+    <None Include="Shader\brillo.vs"><Filter>Shaders</Filter></None>
+    <None Include="Shader\cielo.frag"><Filter>Shaders</Filter></None>
+    <None Include="Shader\cielo.vs"><Filter>Shaders</Filter></None>
+    <None Include="Shader\escena.frag"><Filter>Shaders</Filter></None>
+    <None Include="Shader\escena.vs"><Filter>Shaders</Filter></None>
+    <None Include="Shader\hud.frag"><Filter>Shaders</Filter></None>
+    <None Include="Shader\hud.vs"><Filter>Shaders</Filter></None>
+    <None Include="Shader\instancia.vs"><Filter>Shaders</Filter></None>
+    <None Include="Shader\profundidad.frag"><Filter>Shaders</Filter></None>
+    <None Include="Shader\profundidad.vs"><Filter>Shaders</Filter></None>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+# Botella de agua
+newmtl Plastico
+Kd 0.50 0.78 0.95
+Ks 0.80 0.80 0.80
+Ns 90
+newmtl Tapa
+Kd 0.95 0.95 0.98
+Ks 0.30 0.30 0.30
+Ns 20
+newmtl Etiqueta
+Kd 0.10 0.30 0.75
+Ks 0.10 0.10 0.10
+Ns 10

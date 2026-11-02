@@ -1,0 +1,101 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{6F3A2C10-5B7E-4D8A-9C21-3E4F7A1B2C55}</ProjectGuid>
+    <RootNamespace>ProyectoTenis</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>false</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;NOMINMAX;GLM_FORCE_RADIANS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(SolutionDir)/External Libraries/;$(SolutionDir)/External Libraries/GLFW/include;$(SolutionDir)/External Libraries/GLEW/include;$(SolutionDir)/External Libraries/assimp/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(SolutionDir)/External Libraries/GLFW/lib-vc2015;$(SolutionDir)/External Libraries/GLEW/lib/Release/Win32;$(SolutionDir)/External Libraries/assimp/lib;$(SolutionDir)/External Libraries/SOIL2/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>opengl32.lib;glew32.lib;glfw3.lib;assimp-vc140-mt.lib;soil2-debug.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(SolutionDir)LabGrafica_SMJE\glew32.dll" xcopy /Y /D "$(SolutionDir)LabGrafica_SMJE\glew32.dll" "$(OutDir)" &gt; nul
+if exist "$(SolutionDir)LabGrafica_SMJE\assimp-vc140-mt.dll" xcopy /Y /D "$(SolutionDir)LabGrafica_SMJE\assimp-vc140-mt.dll" "$(OutDir)" &gt; nul
+exit 0</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Shader.cpp" />
+    <ClCompile Include="Mesh.cpp" />
+    <ClCompile Include="Font.cpp" />
+    <ClCompile Include="Texturas.cpp" />
+    <ClCompile Include="Model.cpp" />
+    <ClCompile Include="Renderer.cpp" />
+    <ClCompile Include="Estadio.cpp" />
+    <ClCompile Include="Camara.cpp" />
+    <ClCompile Include="Audio.cpp" />
+    <ClCompile Include="Personaje.cpp" />
+    <ClCompile Include="Animacion.cpp" />
+    <ClCompile Include="Partido.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Utils.h" />
+    <ClInclude Include="Config.h" />
+    <ClInclude Include="Shader.h" />
+    <ClInclude Include="Mesh.h" />
+    <ClInclude Include="Font.h" />
+    <ClInclude Include="Texturas.h" />
+    <ClInclude Include="Model.h" />
+    <ClInclude Include="Renderer.h" />
+    <ClInclude Include="Estadio.h" />
+    <ClInclude Include="Camara.h" />
+    <ClInclude Include="Audio.h" />
+    <ClInclude Include="Personaje.h" />
+    <ClInclude Include="Animacion.h" />
+    <ClInclude Include="Partido.h" />
+    <ClInclude Include="SOIL2\SOIL2.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shader\brillo.frag" />
+    <None Include="Shader\brillo.vs" />
+    <None Include="Shader\cielo.frag" />
+    <None Include="Shader\cielo.vs" />
+    <None Include="Shader\escena.frag" />
+    <None Include="Shader\escena.vs" />
+    <None Include="Shader\hud.frag" />
+    <None Include="Shader\hud.vs" />
+    <None Include="Shader\instancia.vs" />
+    <None Include="Shader\profundidad.frag" />
+    <None Include="Shader\profundidad.vs" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

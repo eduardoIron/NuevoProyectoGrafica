@@ -1,0 +1,8 @@
+Texturas opcionales
+-------------------
+El proyecto genera sus texturas por procedimiento al iniciar. Si quieres usar tus propias
+imagenes, coloca aqui archivos con estos nombres (png, jpg, bmp o tga):
+
+    clay, grass, hard, concrete, asphalt
+
+Ejemplo: Textures/clay.jpg reemplaza la arcilla. El mapa de normales se calcula solo.
