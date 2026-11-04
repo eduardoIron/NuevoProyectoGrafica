@@ -1,0 +1,6 @@
+# Postes
+newmtl material
+Kd 1.0 1.0 1.0
+Ks 0.0 0.0 0.0
+Ns 8
+map_Kd Postes.png

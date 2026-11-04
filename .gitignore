@@ -1,4 +1,19 @@
-.vs
-Debug
-configInicial/Debug
-External Libraries/
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.vcxproj.user
+*.ipch
+*.pdb
+*.ilk
+*.exe
+# Carpetas de compilacion
+Debug/
+Release/
+x64/
+x86/
+*.log
+*.tlog
+*.lastbuildstate
+# Python
+__pycache__/
