@@ -65,6 +65,16 @@ float cicloCarrera = 0.0f;
 const float X_LINEA_DIVISORIA = -6.7f;
 const float X_CARRIL_CORREDOR = -8.3f;
 
+// ============================================================================
+// VARIABLES PARA EL VENDEDOR DE BEBIDAS
+// ============================================================================
+float vendedorZ = -14.0f;
+float vendedorDir = 1.0f;
+float vendedorRotY = 0.0f;
+float cicloVendedor = 0.0f;
+const float X_CARRIL_VENDEDOR = -10.5f; // Posición exacta entre las gradas (-12.0) y las vallas (-8.0)
+
+
 // ===========================================================================================
 //  SISTEMA DE GLOBOS DE CELEBRACION (Animacion de Escalacion + Vuelo)
 // ===========================================================================================
@@ -265,6 +275,7 @@ glm::vec3 pelotaMundo(0.0f);
 float estado[2][J_COUNT];
 float estadoNino[2][J_COUNT];
 float estadoCorredor[J_COUNT]; // Persona corriendo
+float estadoVendedor[J_COUNT]; // Estado del vendedor de bebidas
 float velocidad[2] = { 0.0f, 0.0f };
 float faseCamina[2] = { 0.0f, 0.0f };
 glm::vec2 posPrev[2];
@@ -763,6 +774,9 @@ int main()
 	PartesJugador JugRojo = CargarJugador("Rojo");
 	PartesJugador JugAzul = CargarJugador("Azul");
 	PartesJugador Ninos = CargarJugador("Recogepelotas");
+	PartesJugador ModeloVendedor = CargarJugador("Vendedor"); // Requiere la carpeta Models/Jugador/Vendedor
+
+
 	PartesJugador* jug[2] = { &JugRojo, &JugAzul };
 	Model* Cancha[3] = { &Cancha0, &Cancha1, &Cancha2 };
 	Model* Filas[4] = { &Fila1, &Fila2, &Fila3, &Fila4 };
@@ -828,6 +842,9 @@ int main()
 	const char* nombresPts[5] = { "p0", "p15", "p30", "p40", "pAD" };
 	for (int i = 0; i < 5; i++) texPts[i] = CargarTextura((std::string("images/Marcador/") + nombresPts[i] + ".png").c_str());
 	texSaque = CargarTextura("images/Marcador/saque.png");
+	// Cargar la textura del letrero del vendedor
+	GLuint texLetrero = CargarTextura("images/Letrero/Letrero.jpg");
+
 
 	// ---------- Gradas ----------
 	struct Modulo { glm::vec3 origen; float yaw; int tipo; };
@@ -866,6 +883,7 @@ int main()
 	}
 	PoseListo(estadoCorredor);
 	memset(cur, 0, sizeof(cur));
+	PoseListo(estadoVendedor);
 
 	std::cout << "\n=== TENIS 3D ===  Controles: W A S D + mouse (camara libre) | 1-5 camaras | C cambia vista | E jugar punto | Q automatico"
 		<< " | J/K punto a jugador 1/2 | M pausar corredor calentamiento | L reflectores | N dia/noche | T superficie | B ola | O ovacion | R reiniciar | ESC salir\n" << std::endl;
@@ -929,6 +947,23 @@ int main()
 				corredorDir = 1.0f;
 				corredorRotY = 0.0f;
 			}
+		}
+		// Logica del vendedor de bebidas
+		float velocidadVendedor = 1.6f; // Camina más lento que el corredor
+		vendedorZ += vendedorDir * velocidadVendedor * deltaTime;
+		cicloVendedor += deltaTime * 5.0f;
+
+		if (vendedorZ >= 15.0f)
+		{
+			vendedorZ = 15.0f;
+			vendedorDir = -1.0f;
+			vendedorRotY = 180.0f;
+		}
+		else if (vendedorZ <= -15.0f)
+		{
+			vendedorZ = -15.0f;
+			vendedorDir = 1.0f;
+			vendedorRotY = 0.0f;
 		}
 
 		for (int p = 0; p < 2; p++)
@@ -1070,6 +1105,70 @@ int main()
 			DIBUJAR(lightingShader, *JugAzul.muslo, mc.muslo[s]);
 			DIBUJAR(lightingShader, *JugAzul.pierna, mc.pierna[s]);
 			DIBUJAR(lightingShader, *JugAzul.pie, mc.pie[s]);
+			// ----- ANIMACION Y RENDERIZADO DEL VENDEDOR DE BEBIDAS -----
+			for (int j = 0; j < J_COUNT; j++) estadoVendedor[j] = 0.0f;
+			estadoVendedor[J_POSX] = X_CARRIL_VENDEDOR;
+			estadoVendedor[J_POSZ] = vendedorZ;
+			estadoVendedor[J_ROT] = vendedorRotY;
+			estadoVendedor[J_JUMP] = fabsf(sinf(cicloVendedor)) * 0.03f; // Salto suave al caminar
+			estadoVendedor[J_LEAN] = 3.0f;
+			estadoVendedor[J_TORSO_PITCH] = 2.0f;
+			estadoVendedor[J_TORSO_YAW] = sinf(cicloVendedor) * 6.0f;
+
+			// Caminata suave (piernas)
+			for (int s = 0; s < 2; s++)
+			{
+				float fase = cicloVendedor + (s == 0 ? 0.0f : 3.14159f);
+				float c = cosf(fase); if (c < 0.0f) c = 0.0f;
+				estadoVendedor[s == 0 ? J_HIP_R : J_HIP_L] = 22.0f * sinf(fase) + 5.0f;
+				estadoVendedor[s == 0 ? J_KNEE_R : J_KNEE_L] = 10.0f + 35.0f * powf(c, 1.3f);
+			}
+
+			// Brazo Izquierdo (balanceo natural)
+			estadoVendedor[J_SHL_PITCH] = 25.0f * sinf(cicloVendedor);
+			estadoVendedor[J_ELB_L] = 15.0f;
+
+			// Brazo Derecho (Doblado a 90 grados sosteniendo la bandeja)
+			estadoVendedor[J_SHR_PITCH] = 80.0f;
+			estadoVendedor[J_ELB_R] = 90.0f;
+			estadoVendedor[J_SHR_ROLL] = 10.0f;
+			estadoVendedor[J_WRIST_R] = 20.0f;
+
+			MatJug mv;
+			CalcularJugador(estadoVendedor, 0.95f, mv);
+
+			// Dibujar modelo del Vendedor
+			DIBUJAR(lightingShader, *ModeloVendedor.torso, mv.torso);
+			DIBUJAR(lightingShader, *ModeloVendedor.cabeza, mv.cabeza);
+			DIBUJAR(lightingShader, *ModeloVendedor.brazo, mv.brazoD);
+			DIBUJAR(lightingShader, *ModeloVendedor.antebrazo, mv.antD);
+			DIBUJAR(lightingShader, *ModeloVendedor.brazo, mv.brazoI);
+			DIBUJAR(lightingShader, *ModeloVendedor.antebrazo, mv.antI);
+			for (int s = 0; s < 2; s++)
+			{
+				DIBUJAR(lightingShader, *ModeloVendedor.muslo, mv.muslo[s]);
+				DIBUJAR(lightingShader, *ModeloVendedor.pierna, mv.pierna[s]);
+				DIBUJAR(lightingShader, *ModeloVendedor.pie, mv.pie[s]);
+			}
+			// ----- Dibujar el letrero en la mano -----
+// Reactivamos las texturas y establecemos el color base en blanco neutro para no alterar los colores del .jpg
+			glUniform1i(glGetUniformLocation(lightingShader.Program, "useTexture"), 1);
+			glUniform4fv(glGetUniformLocation(lightingShader.Program, "objectColor"), 1, glm::value_ptr(glm::vec4(1.0f)));
+
+			glBindVertexArray(cuadroVAO); // Usamos el plano 2D ya existente
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, texLetrero); // Usamos la textura cargada en el Paso 1
+
+			// Posicionamos el letrero anclado al antebrazo derecho (antD)
+			glm::mat4 matLetrero = mv.antD
+				* Tr(0.0f, -0.40f, 0.25f)       // Desplazamiento hacia la mano
+				* Rx(90.0f) * Rz(-90.0f)        // Rotación para orientarlo hacia el frente/pasillo
+				* glm::scale(glm::mat4(1.0f), glm::vec3(1.2f, 0.8f, 1.0f)); // Escala (Ancho x Alto). Invierte si el letrero es vertical.
+
+			lightingShader.setMat4("model", matLetrero);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			glBindVertexArray(0);
+
 		}
 
 // ----- GLOBOS DE CELEBRACION (Escalacion Volumetrica y Vuelo) -----
