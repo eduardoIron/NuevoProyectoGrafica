@@ -1,6 +1,4 @@
-﻿
-
-#include <string>
+﻿#include <string>
 #include <vector>
 #include <cstdio>
 #include <cstdlib>
@@ -10,10 +8,10 @@
 #include <iostream>
 #include <utility>
 #include <initializer_list>
+#include <algorithm>
 
 // GLEW
 #include <GL/glew.h>
-
 // GLFW
 #include <GLFW/glfw3.h>
 
@@ -30,8 +28,8 @@
 // ===========================================================================================
 //  Prototipos
 // ===========================================================================================
-void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mode);
-void MouseCallback(GLFWwindow *window, double xPos, double yPos);
+void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mode);
+void MouseCallback(GLFWwindow* window, double xPos, double yPos);
 void DoMovement();
 void AnimationPunto();
 
@@ -39,7 +37,7 @@ void AnimationPunto();
 const GLuint WIDTH = 1280, HEIGHT = 720;
 int SCREEN_WIDTH, SCREEN_HEIGHT;
 
-// Camara libre (clase Camera de clase)
+// Camara libre 
 Camera camera(glm::vec3(0.0f, 6.0f, 18.5f), glm::vec3(0.0f, 1.0f, 0.0f), -90.0f, -16.0f);
 GLfloat lastX = WIDTH / 2.0, lastY = HEIGHT / 2.0;
 bool keys[1024];
@@ -47,33 +45,68 @@ bool firstMouse = true;
 GLfloat deltaTime = 0.0f;
 GLfloat lastFrame = 0.0f;
 
-// ===========================================================================================
-//  Dimensiones del recinto (metros). La red esta en z = 0, la cancha mide 23.77 x 10.97 (ITF)
-// ===========================================================================================
-const float PISO_HX = 10.0f, PISO_HZ = 20.0f;     // piso de juego 20 x 40 m
-const float SILLA_X = 7.6f;                       // silla del juez
-const float DESCANSO_X = -8.4f;                   // zona de descanso de los jugadores
+// Dimensiones
+const float PISO_HX = 10.0f, PISO_HZ = 20.0f;
+const float SILLA_X = 7.6f;
 const float TORRE_X = 22.0f, TORRE_Z = 26.0f, TORRE_H = 31.0f;
 const float MARCADOR_Z = 31.0f, MARCADOR_Y = 9.6f;
 const float TUNEL_Z = -19.0f;
-const float GR_PROF = 0.85f, GR_ALZA = 0.42f;     // gradas: profundidad y altura de cada fila
+const float GR_PROF = 0.85f, GR_ALZA = 0.42f;
 const int GR_FILAS = 10;
+
+// ============================================================================
+// VARIABLES PARA LA ZONA DE CALENTAMIENTO (PERSONA CORRIENDO)
+// ============================================================================
+bool animCalentamiento = true;
+float corredorZ = -8.0f;
+float corredorDir = 1.0f;
+float corredorRotY = 0.0f;
+float cicloCarrera = 0.0f;
+const float X_LINEA_DIVISORIA = -6.7f;
+const float X_CARRIL_CORREDOR = -8.3f;
+
+// ===========================================================================================
+//  SISTEMA DE GLOBOS DE CELEBRACION (Animacion de Escalacion + Vuelo)
+// ===========================================================================================
+struct Globo {
+	glm::vec3 posBase;
+	float faseOscilacion;
+};
+const int NUM_GLOBOS = 6;
+Globo globos[NUM_GLOBOS];
+bool globosActivos = false;
+float tiempoGlobos = 0.0f;
+int colorGloboJugador = 0; // 0 = Rojo, 1 = Azul
+GLuint texGloboRojo = 0, texGloboAzul = 0;
+
+void ActivarGlobos(int jugador)
+{
+	globosActivos = true;
+	tiempoGlobos = 0.0f;
+	colorGloboJugador = jugador;
+	float posicionesX[NUM_GLOBOS] = { -10.5f, -10.5f, -10.5f,  10.5f,  10.5f, 10.5f };
+	float posicionesZ[NUM_GLOBOS] = { -10.0f,   0.0f,  10.0f, -10.0f,   0.0f, 10.0f };
+	for (int i = 0; i < NUM_GLOBOS; i++) {
+		globos[i].posBase = glm::vec3(posicionesX[i], 1.3f, posicionesZ[i]);
+		globos[i].faseOscilacion = i * 1.35f;
+	}
+}
 
 // ===========================================================================================
 //  Estado general del programa
 // ===========================================================================================
-int camModo = 1;              // 1 libre, 2 juez, 3 TV, 4 tercera persona, 5 jugador
-int tvPosicion = 0;           // posicion de la camara de transmision
-int seguido = 0;              // jugador que siguen las camaras 4 y 5
-int superficie = 0;           // 0 arcilla, 1 pasto, 2 cemento
-bool reflectores = false;     // luces de los postes
-bool diaObjetivo = true;      // true = dia, false = noche
-float dia = 1.0f;             // 1 = dia, 0 = noche (transicion suave)
+int camModo = 1;
+int tvPosicion = 0;
+int seguido = 0;
+int superficie = 0;
+bool reflectores = false;
+bool diaObjetivo = true;
+float dia = 1.0f;
 float luzReflectores = 0.0f;
-bool autoJuego = false;       // juega puntos solo
+bool autoJuego = false;
 bool olaActiva = false;
 float olaOn = 0.0f;
-float festejo = 0.0f;         // 0..1 el publico salta
+float festejo = 0.0f;
 float pulsoMarcador = 0.0f;
 float tiempo = 0.0f;
 
@@ -81,10 +114,10 @@ glm::vec3 juezTarget(0.0f, 1.0f, 0.0f);
 glm::vec3 tvTarget(0.0f, 1.0f, 0.0f);
 glm::vec3 terceraPos(0.0f, 3.0f, 18.0f);
 glm::vec3 jugadorTarget(0.0f, 1.0f, 0.0f);
-float juezCabeza = 0.0f;      // giro de la cabeza del juez
+float juezCabeza = 0.0f;
 
 // ===========================================================================================
-//  Marcador de tenis (puntos, juegos y sets)
+//  Marcador
 // ===========================================================================================
 struct Marcador
 {
@@ -97,7 +130,7 @@ struct Marcador
 	int ganador;
 };
 Marcador marcador;
-const char *NOMBRES[2] = { "ROJAS", "GARCIA" };
+const char* NOMBRES[2] = { "ROJAS", "GARCIA" };
 
 void ReiniciarMarcador()
 {
@@ -106,7 +139,6 @@ void ReiniciarMarcador()
 	marcador.setNo = 0; marcador.servidor = 0; marcador.terminado = false; marcador.ganador = -1;
 }
 
-// Suma un punto al jugador p y aplica las reglas (juego, set, partido al mejor de 3 sets)
 void SumarPunto(int p)
 {
 	if (marcador.terminado) return;
@@ -114,6 +146,8 @@ void SumarPunto(int p)
 	marcador.pts[p]++;
 	pulsoMarcador = 1.0f;
 	festejo = 1.0f;
+	ActivarGlobos(p); // Lanza globos de color al anotar
+
 	if (marcador.pts[p] >= 4 && marcador.pts[p] - marcador.pts[o] >= 2)
 	{
 		marcador.pts[0] = marcador.pts[1] = 0;
@@ -143,28 +177,24 @@ void SumarPunto(int p)
 
 // ===========================================================================================
 //  PERSONAJES POR PARTES (modelado jerarquico)
-//  Cada jugador es un arbol de matrices: cadera -> torso -> (cabeza | hombro -> codo -> raqueta)
-//                                                 cadera -> muslo -> pierna -> pie
 // ===========================================================================================
-struct PartesJugador { Model *torso, *cabeza, *brazo, *antebrazo, *muslo, *pierna, *pie; };
+struct PartesJugador { Model* torso, * cabeza, * brazo, * antebrazo, * muslo, * pierna, * pie; };
 
-PartesJugador CargarJugador(const char *carpeta)
+PartesJugador CargarJugador(const char* carpeta)
 {
 	std::string b = std::string("Models/Jugador/") + carpeta + "/";
 	PartesJugador p;
-	p.torso     = new Model((char *)(b + "Torso.obj").c_str());
-	p.cabeza    = new Model((char *)(b + "Cabeza.obj").c_str());
-	p.brazo     = new Model((char *)(b + "Brazo.obj").c_str());
-	p.antebrazo = new Model((char *)(b + "Antebrazo.obj").c_str());
-	p.muslo     = new Model((char *)(b + "Muslo.obj").c_str());
-	p.pierna    = new Model((char *)(b + "Pierna.obj").c_str());
-	p.pie       = new Model((char *)(b + "Pie.obj").c_str());
+	p.torso = new Model((char*)(b + "Torso.obj").c_str());
+	p.cabeza = new Model((char*)(b + "Cabeza.obj").c_str());
+	p.brazo = new Model((char*)(b + "Brazo.obj").c_str());
+	p.antebrazo = new Model((char*)(b + "Antebrazo.obj").c_str());
+	p.muslo = new Model((char*)(b + "Muslo.obj").c_str());
+	p.pierna = new Model((char*)(b + "Pierna.obj").c_str());
+	p.pie = new Model((char*)(b + "Pie.obj").c_str());
 	return p;
 }
 
-// Variables articulares de un jugador (angulos en grados, posiciones en metros)
-enum
-{
+enum {
 	J_POSX, J_POSZ, J_ROT, J_JUMP, J_LEAN, J_TORSO_YAW, J_TORSO_PITCH, J_HEAD_YAW, J_HEAD_PITCH,
 	J_SHR_PITCH, J_SHR_YAW, J_SHR_ROLL, J_ELB_R, J_WRIST_R,
 	J_SHL_PITCH, J_SHL_ROLL, J_ELB_L,
@@ -178,15 +208,12 @@ glm::mat4 Ry(float g) { return glm::rotate(glm::mat4(1.0f), glm::radians(g), glm
 glm::mat4 Rz(float g) { return glm::rotate(glm::mat4(1.0f), glm::radians(g), glm::vec3(0.0f, 0.0f, 1.0f)); }
 glm::mat4 Esc(float s) { return glm::scale(glm::mat4(1.0f), glm::vec3(s, s, s)); }
 
-struct MatJug
-{
+struct MatJug {
 	glm::mat4 torso, cabeza, brazoD, antD, brazoI, antI, muslo[2], pierna[2], pie[2], raqueta;
 };
 
-// Calcula las matrices de todas las partes del cuerpo a partir de las variables articulares
-void CalcularJugador(const float *v, float esc, MatJug &m)
+void CalcularJugador(const float* v, float esc, MatJug& m)
 {
-	// altura de la cadera para que el pie que apoya toque el piso
 	float hr = 0.04f + 0.44f * cosf(glm::radians(v[J_HIP_R])) + 0.43f * cosf(glm::radians(v[J_HIP_R] - v[J_KNEE_R])) + 0.0775f;
 	float hl = 0.04f + 0.44f * cosf(glm::radians(v[J_HIP_L])) + 0.43f * cosf(glm::radians(v[J_HIP_L] - v[J_KNEE_L])) + 0.0775f;
 	float HP = hr > hl ? hr : hl;
@@ -196,14 +223,11 @@ void CalcularJugador(const float *v, float esc, MatJug &m)
 	m.torso = pelvis * Ry(v[J_TORSO_YAW]) * Rx(v[J_TORSO_PITCH]);
 	m.cabeza = m.torso * Tr(0.0f, 0.68f, 0.0f) * Ry(v[J_HEAD_YAW]) * Rx(v[J_HEAD_PITCH]);
 
-	// brazo derecho (el que sostiene la raqueta) : hombro -> codo -> raqueta
 	m.brazoD = m.torso * Tr(-0.205f, 0.50f, 0.0f) * Ry(v[J_SHR_YAW]) * Rx(-v[J_SHR_PITCH]) * Rz(-v[J_SHR_ROLL]);
 	m.antD = m.brazoD * Tr(0.0f, -0.29f, 0.0f) * Rx(-v[J_ELB_R]);
 	m.raqueta = m.antD * Tr(0.0f, -0.27f, 0.0f) * Rx(-v[J_WRIST_R]) * Tr(0.0f, -0.05f, 0.0f) * Rx(180.0f);
-	// brazo izquierdo
 	m.brazoI = m.torso * Tr(0.205f, 0.50f, 0.0f) * Rx(-v[J_SHL_PITCH]) * Rz(v[J_SHL_ROLL]);
 	m.antI = m.brazoI * Tr(0.0f, -0.29f, 0.0f) * Rx(-v[J_ELB_L]);
-	// piernas: cadera -> rodilla -> tobillo (el pie se mantiene plano)
 	for (int s = 0; s < 2; s++)
 	{
 		float hip = s == 0 ? v[J_HIP_R] : v[J_HIP_L];
@@ -215,100 +239,87 @@ void CalcularJugador(const float *v, float esc, MatJug &m)
 	}
 }
 
-glm::vec3 PosRaqueta(const float *v) { MatJug m; CalcularJugador(v, 1.0f, m); return glm::vec3(m.raqueta * glm::vec4(0.0f, 0.49f, 0.0f, 1.0f)); }
-glm::vec3 PosManoIzq(const float *v) { MatJug m; CalcularJugador(v, 1.0f, m); return glm::vec3(m.antI * glm::vec4(0.0f, -0.30f, 0.0f, 1.0f)); }
+glm::vec3 PosRaqueta(const float* v) { MatJug m; CalcularJugador(v, 1.0f, m); return glm::vec3(m.raqueta * glm::vec4(0.0f, 0.49f, 0.0f, 1.0f)); }
+glm::vec3 PosManoIzq(const float* v) { MatJug m; CalcularJugador(v, 1.0f, m); return glm::vec3(m.antI * glm::vec4(0.0f, -0.30f, 0.0f, 1.0f)); }
 
 // ===========================================================================================
-//  ANIMACION POR KEYFRAMES (mismo esquema de clase: tabla de frames, incrementos y pasos)
-//  Un "punto" es una animacion completa: saque, rebote, devolucion/estirada y festejo.
-//  Cada frame guarda las variables de los DOS jugadores (S = el que saca, R = el que recibe) y la pelota.
+//  ANIMACION POR KEYFRAMES 
 // ===========================================================================================
 #define MAX_FRAMES 40
 #define NV (2 * J_COUNT + 3)
 #define BX (2 * J_COUNT)
 
-float KF[MAX_FRAMES][NV];      // keyframes
-int KFsteps[MAX_FRAMES];       // pasos (1/60 s) que dura llegar al frame i desde el i-1
-float KFinc[NV];               // incrementos por paso
-float cur[NV];                 // valores actuales de la animacion (espacio del guion)
-int NF = 0;                    // frames cargados
-int playIndex = 0;             // frame actual
-int i_curr_steps = 0;          // paso dentro del segmento
+float KF[MAX_FRAMES][NV];
+int KFsteps[MAX_FRAMES];
+float KFinc[NV];
+float cur[NV];
+int NF = 0;
+int playIndex = 0;
+int i_curr_steps = 0;
 bool playPunto = false;
 int frameLiberar = 4, frameResultado = 0, ganadorRol = 0;
-int rolS = 0, rolR = 1;        // indice del jugador (0 rojo, 1 azul) que saca / recibe
-bool volteo = false;           // true cuando saca el jugador azul (el guion se gira 180 grados)
+int rolS = 0, rolR = 1;
+bool volteo = false;
 bool pelotaVisible = false;
 glm::vec3 pelotaMundo(0.0f);
-float estado[2][J_COUNT];      // pose en el MUNDO de cada jugador
-float estadoNino[2][J_COUNT];  // recogepelotas
+float estado[2][J_COUNT];
+float estadoNino[2][J_COUNT];
+float estadoCorredor[J_COUNT]; // Persona corriendo
 float velocidad[2] = { 0.0f, 0.0f };
 float faseCamina[2] = { 0.0f, 0.0f };
 glm::vec2 posPrev[2];
 
 typedef std::pair<int, float> JV;
-void Pose(float *p, std::initializer_list<JV> cambios)
-{
+void Pose(float* p, std::initializer_list<JV> cambios) {
 	for (std::initializer_list<JV>::const_iterator it = cambios.begin(); it != cambios.end(); ++it) p[it->first] = it->second;
 }
 
-void PoseListo(float *p)
-{
+void PoseListo(float* p) {
 	for (int j = J_JUMP; j < J_COUNT; j++) p[j] = 0.0f;
 	Pose(p, { { J_LEAN, 6.0f }, { J_TORSO_PITCH, 10.0f }, { J_HIP_R, 24.0f }, { J_KNEE_R, 46.0f }, { J_HIP_L, 24.0f }, { J_KNEE_L, 46.0f },
 			  { J_SHR_PITCH, 38.0f }, { J_SHR_ROLL, 6.0f }, { J_ELB_R, 85.0f }, { J_WRIST_R, 25.0f },
 			  { J_SHL_PITCH, 34.0f }, { J_SHL_ROLL, 6.0f }, { J_ELB_L, 80.0f } });
 }
 
-int NuevoFrame(int pasos)
-{
+int NuevoFrame(int pasos) {
 	if (NF > 0) memcpy(KF[NF], KF[NF - 1], sizeof(KF[0]));
 	KFsteps[NF] = pasos;
 	return NF++;
 }
-float *PS(int f) { return &KF[f][0]; }            // pose del que saca en el frame f
-float *PR(int f) { return &KF[f][J_COUNT]; }      // pose del que recibe
-float *PB(int f) { return &KF[f][BX]; }           // pelota
+float* PS(int f) { return &KF[f][0]; }
+float* PR(int f) { return &KF[f][J_COUNT]; }
+float* PB(int f) { return &KF[f][BX]; }
 
-glm::vec3 Arco(const glm::vec3 &a, const glm::vec3 &b, float u, float h)
-{
+glm::vec3 Arco(const glm::vec3& a, const glm::vec3& b, float u, float h) {
 	glm::vec3 p = a + (b - a) * u;
 	p.y = a.y * (1.0f - u) + b.y * u + 4.0f * h * u * (1.0f - u);
 	return p;
 }
-float AlturaArco(const glm::vec3 &a, const glm::vec3 &b, float libre)     // para que la pelota pase la red
-{
+float AlturaArco(const glm::vec3& a, const glm::vec3& b, float libre) {
 	if (a.z * b.z >= 0.0f) return 0.3f;
 	float u = a.z / (a.z - b.z);
 	float yl = a.y * (1.0f - u) + b.y * u;
 	float h = (libre - yl) / (4.0f * u * (1.0f - u));
 	return h > 0.3f ? h : 0.3f;
 }
-// Pone la pelota de los frames (desde+1 .. hasta) sobre un arco p0 -> p1
-void PelotaArco(int desde, int hasta, const glm::vec3 &p0, const glm::vec3 &p1, float h)
-{
+void PelotaArco(int desde, int hasta, const glm::vec3& p0, const glm::vec3& p1, float h) {
 	int total = 0;
 	for (int f = desde + 1; f <= hasta; f++) total += KFsteps[f];
 	int acum = 0;
-	for (int f = desde + 1; f <= hasta; f++)
-	{
+	for (int f = desde + 1; f <= hasta; f++) {
 		acum += KFsteps[f];
 		glm::vec3 p = Arco(p0, p1, (float)acum / total, h);
 		PB(f)[0] = p.x; PB(f)[1] = p.y; PB(f)[2] = p.z;
 	}
 }
-void PonerPelota(int f, const glm::vec3 &p) { PB(f)[0] = p.x; PB(f)[1] = p.y; PB(f)[2] = p.z; }
+void PonerPelota(int f, const glm::vec3& p) { PB(f)[0] = p.x; PB(f)[1] = p.y; PB(f)[2] = p.z; }
 float Aleatorio(float a, float b) { return a + (b - a) * (float)rand() / (float)RAND_MAX; }
 
-// Poses clave (derivadas de los movimientos del saque y la derecha)
-void PoseSaque(float *p, int etapa)
-{
-	// 0 postura, 1 raqueta atras, 2 lanzamiento, 3 trofeo, 4 caida de raqueta, 5 contacto, 6 seguimiento, 7 recuperacion
+void PoseSaque(float* p, int etapa) {
 	PoseListo(p);
 	Pose(p, { { J_LEAN, 3.0f }, { J_TORSO_PITCH, 4.0f }, { J_TORSO_YAW, -38.0f }, { J_HIP_R, 14.0f }, { J_KNEE_R, 26.0f }, { J_HIP_L, 14.0f }, { J_KNEE_L, 26.0f },
 			  { J_SHR_PITCH, 24.0f }, { J_SHR_ROLL, 8.0f }, { J_ELB_R, 48.0f }, { J_WRIST_R, 8.0f }, { J_SHL_PITCH, 38.0f }, { J_ELB_L, 55.0f }, { J_SHL_ROLL, 5.0f } });
-	switch (etapa)
-	{
+	switch (etapa) {
 	case 1: Pose(p, { { J_SHR_PITCH, -10.0f }, { J_ELB_R, 22.0f }, { J_SHL_PITCH, 60.0f }, { J_KNEE_R, 32.0f }, { J_KNEE_L, 32.0f }, { J_TORSO_YAW, -42.0f } }); break;
 	case 2: Pose(p, { { J_SHL_PITCH, 165.0f }, { J_ELB_L, 4.0f }, { J_SHL_ROLL, 14.0f }, { J_SHR_PITCH, 30.0f }, { J_SHR_ROLL, 40.0f }, { J_ELB_R, 95.0f }, { J_WRIST_R, 0.0f },
 					  { J_KNEE_R, 42.0f }, { J_KNEE_L, 42.0f }, { J_HIP_R, 20.0f }, { J_HIP_L, 20.0f }, { J_TORSO_PITCH, -4.0f }, { J_HEAD_PITCH, -14.0f }, { J_TORSO_YAW, -40.0f } }); break;
@@ -322,28 +333,22 @@ void PoseSaque(float *p, int etapa)
 					  { J_KNEE_R, 36.0f }, { J_KNEE_L, 30.0f }, { J_HIP_R, 28.0f }, { J_HIP_L, 22.0f }, { J_TORSO_PITCH, 28.0f }, { J_LEAN, 10.0f }, { J_HEAD_PITCH, 12.0f }, { J_TORSO_YAW, 58.0f }, { J_JUMP, 0.02f } }); break;
 	case 7: Pose(p, { { J_SHR_PITCH, 30.0f }, { J_SHR_YAW, 25.0f }, { J_ELB_R, 62.0f }, { J_SHL_PITCH, 30.0f }, { J_ELB_L, 65.0f }, { J_KNEE_R, 32.0f }, { J_KNEE_L, 32.0f },
 					  { J_HIP_R, 18.0f }, { J_HIP_L, 18.0f }, { J_TORSO_PITCH, 12.0f }, { J_TORSO_YAW, 25.0f } }); break;
-	default: break;
 	}
 }
 
-void PoseDerecha(float *p, int etapa)
-{
-	// 0 listo, 1 raqueta atras, 2 contacto, 3 seguimiento
+void PoseDerecha(float* p, int etapa) {
 	PoseListo(p);
-	switch (etapa)
-	{
+	switch (etapa) {
 	case 1: Pose(p, { { J_TORSO_YAW, -52.0f }, { J_LEAN, 8.0f }, { J_TORSO_PITCH, 12.0f }, { J_SHR_PITCH, -22.0f }, { J_SHR_ROLL, 28.0f }, { J_ELB_R, 78.0f }, { J_WRIST_R, 35.0f },
 					  { J_SHL_PITCH, 78.0f }, { J_ELB_L, 14.0f }, { J_SHL_ROLL, -10.0f }, { J_HIP_R, 30.0f }, { J_KNEE_R, 54.0f }, { J_HIP_L, 18.0f }, { J_KNEE_L, 40.0f }, { J_HEAD_YAW, 25.0f } }); break;
 	case 2: Pose(p, { { J_TORSO_YAW, 4.0f }, { J_LEAN, 10.0f }, { J_TORSO_PITCH, 14.0f }, { J_SHR_PITCH, 74.0f }, { J_SHR_ROLL, 18.0f }, { J_SHR_YAW, -4.0f }, { J_ELB_R, 24.0f }, { J_WRIST_R, 68.0f },
 					  { J_SHL_PITCH, -15.0f }, { J_ELB_L, 40.0f }, { J_SHL_ROLL, 42.0f }, { J_HIP_R, 14.0f }, { J_KNEE_R, 28.0f }, { J_HIP_L, 38.0f }, { J_KNEE_L, 52.0f } }); break;
 	case 3: Pose(p, { { J_TORSO_YAW, 70.0f }, { J_LEAN, 6.0f }, { J_TORSO_PITCH, 8.0f }, { J_SHR_PITCH, 118.0f }, { J_SHR_YAW, 78.0f }, { J_SHR_ROLL, 8.0f }, { J_ELB_R, 96.0f }, { J_WRIST_R, 30.0f },
 					  { J_SHL_PITCH, 10.0f }, { J_ELB_L, 60.0f }, { J_SHL_ROLL, 30.0f }, { J_HIP_R, 12.0f }, { J_KNEE_R, 22.0f }, { J_HIP_L, 30.0f }, { J_KNEE_L, 36.0f }, { J_HEAD_YAW, -20.0f } }); break;
-	default: break;
 	}
 }
 
-void PoseEstirada(float *p, int etapa)
-{
+void PoseEstirada(float* p, int etapa) {
 	PoseListo(p);
 	if (etapa == 1)
 		Pose(p, { { J_TORSO_YAW, -40.0f }, { J_SHR_PITCH, 5.0f }, { J_SHR_ROLL, 40.0f }, { J_ELB_R, 70.0f }, { J_WRIST_R, 30.0f }, { J_LEAN, 12.0f }, { J_HIP_R, 34.0f }, { J_KNEE_R, 60.0f } });
@@ -352,18 +357,16 @@ void PoseEstirada(float *p, int etapa)
 				  { J_SHL_PITCH, -25.0f }, { J_SHL_ROLL, 55.0f }, { J_ELB_L, 20.0f }, { J_HIP_R, -14.0f }, { J_KNEE_R, 14.0f }, { J_HIP_L, 62.0f }, { J_KNEE_L, 74.0f } });
 }
 
-void PoseFestejo(float *p, int etapa)
-{
+void PoseFestejo(float* p, int etapa) {
 	PoseListo(p);
-	if (etapa == 0)       // brazos arriba y salto
+	if (etapa == 0)
 		Pose(p, { { J_SHR_PITCH, 165.0f }, { J_ELB_R, 25.0f }, { J_SHL_PITCH, 165.0f }, { J_ELB_L, 25.0f }, { J_SHR_ROLL, 20.0f }, { J_SHL_ROLL, 20.0f },
 				  { J_HEAD_PITCH, -18.0f }, { J_TORSO_PITCH, -8.0f }, { J_LEAN, 0.0f }, { J_HIP_R, 4.0f }, { J_HIP_L, 4.0f }, { J_KNEE_R, 8.0f }, { J_KNEE_L, 8.0f }, { J_JUMP, 0.20f } });
-	else                  // puno cerrado
+	else
 		Pose(p, { { J_SHR_PITCH, 100.0f }, { J_ELB_R, 135.0f }, { J_WRIST_R, 10.0f }, { J_SHL_PITCH, 15.0f }, { J_ELB_L, 70.0f }, { J_TORSO_YAW, -22.0f }, { J_TORSO_PITCH, 10.0f }, { J_HEAD_PITCH, -6.0f } });
 }
 
-void PoseDesanimo(float *p, int etapa)
-{
+void PoseDesanimo(float* p, int etapa) {
 	PoseListo(p);
 	Pose(p, { { J_TORSO_PITCH, 18.0f }, { J_LEAN, 6.0f }, { J_HEAD_PITCH, 26.0f }, { J_SHR_PITCH, 4.0f }, { J_ELB_R, 16.0f }, { J_SHL_PITCH, 6.0f }, { J_ELB_L, 14.0f },
 			  { J_HIP_R, 8.0f }, { J_KNEE_R, 14.0f }, { J_HIP_L, 8.0f }, { J_KNEE_L, 14.0f } });
@@ -371,64 +374,51 @@ void PoseDesanimo(float *p, int etapa)
 	if (etapa == 2) p[J_HEAD_YAW] = 26.0f;
 }
 
-// Carga la tabla de keyframes de un punto.
-//   variante 0 = ACE (el rival se estira y no llega)   variante 1 = el rival devuelve y gana el punto
-void CargarPunto(int variante, float sx)
-{
+void CargarPunto(int variante, float sx) {
 	NF = 0;
-	memcpy(KF[NuevoFrame(1)], cur, sizeof(cur));                       // frame 0: el estado actual
+	memcpy(KF[NuevoFrame(1)], cur, sizeof(cur));
 	float sgn = sx > 0.0f ? 1.0f : -1.0f;
 	float rx = -sgn * 1.0f;
 	const float SZ = 12.8f, RZ = -13.6f;
 
-	// ---- frame 1: cada quien a su posicion ----
 	int f = NuevoFrame(90);
 	PoseListo(PS(f)); PoseListo(PR(f));
 	PS(f)[J_POSX] = sx; PS(f)[J_POSZ] = SZ; PS(f)[J_ROT] = 180.0f;
 	PR(f)[J_POSX] = rx; PR(f)[J_POSZ] = RZ; PR(f)[J_ROT] = 0.0f;
-	// ---- SAQUE: etapas 0..7 del que saca (frames 2..9) ----
+
 	int pasosSaque[8] = { 20, 24, 31, 16, 12, 10, 18, 18 };
 	int fs[8];
-	for (int e = 0; e < 8; e++)
-	{
+	for (int e = 0; e < 8; e++) {
 		fs[e] = NuevoFrame(pasosSaque[e]);
 		float pos[3] = { PS(fs[e] - 1)[J_POSX], PS(fs[e] - 1)[J_POSZ], PS(fs[e] - 1)[J_ROT] };
 		PoseSaque(PS(fs[e]), e);
 		PS(fs[e])[J_POSX] = pos[0]; PS(fs[e])[J_POSZ] = pos[1]; PS(fs[e])[J_ROT] = pos[2];
 	}
-	frameLiberar = fs[2];                      // la pelota deja la mano en el lanzamiento
+	frameLiberar = fs[2];
 	int fTrofeo = fs[3], fCaida = fs[4], fContacto = fs[5];
-	// el que recibe flexiona las rodillas (paso de preparacion) al ver el lanzamiento
 	for (int e = 3; e < 8; e++) { PR(fs[e])[J_KNEE_R] = 58.0f; PR(fs[e])[J_KNEE_L] = 58.0f; PR(fs[e])[J_HIP_R] = 32.0f; PR(fs[e])[J_HIP_L] = 32.0f; }
 
-	// ---- trayectoria del saque ----
 	glm::vec3 manoL = PosManoIzq(PS(fs[2]));
 	glm::vec3 C1 = PosRaqueta(PS(fContacto));
 	PonerPelota(fs[2], manoL);
-	PelotaArco(fs[2], fContacto, manoL, C1, 1.0f);                     // lanzamiento hacia arriba
+	PelotaArco(fs[2], fContacto, manoL, C1, 1.0f);
 	glm::vec3 B1;
 	if (variante == 0) B1 = glm::vec3(-sgn * Aleatorio(3.0f, 3.7f), 0.034f, -Aleatorio(5.0f, 5.8f));
 	else               B1 = glm::vec3(-sgn * Aleatorio(1.8f, 3.2f), 0.034f, -Aleatorio(4.0f, 5.4f));
 
-	// frame del rebote (la pelota vuela en los frames 6, 7 y este)
 	int fB = NuevoFrame(12);
-	PoseListo(PS(fB)); PS(fB)[J_POSX] = sx; PS(fB)[J_POSZ] = SZ; PS(fB)[J_ROT] = 180.0f;   // el que saca vuelve a "listo"
+	PoseListo(PS(fB)); PS(fB)[J_POSX] = sx; PS(fB)[J_POSZ] = SZ; PS(fB)[J_ROT] = 180.0f;
 	float hS = AlturaArco(C1, B1, 1.35f);
 	PelotaArco(fContacto, fB, C1, B1, hS);
-	(void)fTrofeo; (void)fCaida;
 
-	if (variante == 1)
-	{
-		// ---- el rival DEVUELVE con una derecha ----
+	if (variante == 1) {
 		glm::vec3 d = glm::normalize(glm::vec3(B1.x - C1.x, 0.0f, B1.z - C1.z));
 		glm::vec3 C2t(B1.x + d.x * 6.0f, 1.0f, B1.z + d.z * 6.0f);
 		float tmp[J_COUNT]; PoseDerecha(tmp, 2); tmp[J_POSX] = 0.0f; tmp[J_POSZ] = 0.0f; tmp[J_ROT] = 0.0f;
 		glm::vec3 off = PosRaqueta(tmp);
-		float RSx = C2t.x - off.x, RSz = C2t.z - off.z;                      // donde debe pararse para pegarle
-		// el que recibe se desplaza durante los frames de vuelo (F, G, B)
+		float RSx = C2t.x - off.x, RSz = C2t.z - off.z;
 		float tx[3] = { 0.3f, 0.8f, 1.0f };
-		for (int k = 0; k < 3; k++)
-		{
+		for (int k = 0; k < 3; k++) {
 			int ff = k == 0 ? fs[6] : (k == 1 ? fs[7] : fB);
 			PR(ff)[J_POSX] = rx + (RSx - rx) * tx[k];
 			PR(ff)[J_POSZ] = RZ + (RSz - RZ) * tx[k];
@@ -445,16 +435,13 @@ void CargarPunto(int variante, float sx)
 		PoseDerecha(PR(f13), 3); PR(f13)[J_POSX] = px; PR(f13)[J_POSZ] = pz; PR(f13)[J_ROT] = 0.0f;
 		int f14 = NuevoFrame(20);
 		PoseDerecha(PR(f14), 0); PR(f14)[J_POSX] = px; PR(f14)[J_POSZ] = pz; PR(f14)[J_ROT] = 0.0f;
-		// la pelota vuelve al campo del que saco
 		glm::vec3 B2(sgn * Aleatorio(0.6f, 2.2f), 0.034f, Aleatorio(8.0f, 9.0f));
 		int f15 = NuevoFrame(22);
 		PelotaArco(f12, f15, C2, B2, AlturaArco(C2, B2, 1.2f));
-		// el que saco se estira para llegar, pero la pelota pasa de largo
 		float sxx = sx + (B2.x * 1.15f - sx) * 0.55f;
 		PoseEstirada(PS(f14), 1); PS(f14)[J_POSX] = sx + (sxx - sx) * 0.4f; PS(f14)[J_POSZ] = SZ + 0.3f; PS(f14)[J_ROT] = 180.0f;
 		PoseEstirada(PS(f15), 2); PS(f15)[J_POSX] = sxx; PS(f15)[J_POSZ] = SZ + 0.7f; PS(f15)[J_ROT] = 180.0f;
 		PoseListo(PR(f15)); PR(f15)[J_POSX] = px; PR(f15)[J_POSZ] = pz; PR(f15)[J_ROT] = 0.0f;
-		// pelota hacia el muro y reposo
 		glm::vec3 W2(B2.x * 1.3f, 0.55f, PISO_HZ - 0.3f);
 		int f16 = NuevoFrame(25);
 		int f17 = NuevoFrame(20);
@@ -463,7 +450,7 @@ void CargarPunto(int variante, float sx)
 		PoseEstirada(PS(f17), 2); PS(f17)[J_POSX] = sxx; PS(f17)[J_POSZ] = SZ + 0.7f; PS(f17)[J_ROT] = 180.0f;
 		PoseFestejo(PR(f16), 0); PR(f16)[J_POSX] = px; PR(f16)[J_POSZ] = pz; PR(f16)[J_ROT] = 0.0f;
 		PoseFestejo(PR(f17), 1); PR(f17)[J_POSX] = px; PR(f17)[J_POSZ] = pz; PR(f17)[J_ROT] = 0.0f;
-		frameResultado = f16; ganadorRol = 1;       // gana el que recibe
+		frameResultado = f16; ganadorRol = 1;
 		int f18 = NuevoFrame(30);
 		glm::vec3 R2(W2.x * 0.85f, 0.034f, PISO_HZ - 2.0f);
 		PelotaArco(f17, f18, W2, R2, 0.28f);
@@ -478,15 +465,11 @@ void CargarPunto(int variante, float sx)
 		PoseListo(PR(f20)); PR(f20)[J_POSX] = px; PR(f20)[J_POSZ] = pz; PR(f20)[J_ROT] = 0.0f;
 		PonerPelota(f20, R2);
 	}
-	else
-	{
-		// ---- ACE: la pelota sigue hacia el fondo y el rival se estira sin llegar ----
+	else {
 		float lx = B1.x * 1.12f; if (lx > 9.0f) lx = 9.0f; if (lx < -9.0f) lx = -9.0f;
 		glm::vec3 W1(lx, 0.55f, -(PISO_HZ - 0.3f));
 		float qx = rx + (B1.x * 1.05f - rx) * 0.75f;
-		// frames del rival mientras la pelota viaja
-		for (int k = 0; k < 3; k++)
-		{
+		for (int k = 0; k < 3; k++) {
 			int ff = k == 0 ? fs[6] : (k == 1 ? fs[7] : fB);
 			PR(ff)[J_POSX] = rx + (qx - rx) * (0.25f * (k + 1)); PR(ff)[J_POSZ] = RZ + 0.5f * k;
 			if (k >= 1) { float p0 = PR(ff)[J_POSX], p1 = PR(ff)[J_POSZ]; PoseEstirada(PR(ff), 1); PR(ff)[J_POSX] = p0; PR(ff)[J_POSZ] = p1; PR(ff)[J_ROT] = 0.0f; }
@@ -499,7 +482,7 @@ void CargarPunto(int variante, float sx)
 		PelotaArco(fB, f13, B1, W1, 0.45f);
 		PoseFestejo(PS(f13), 0); PS(f13)[J_POSX] = sx; PS(f13)[J_POSZ] = SZ; PS(f13)[J_ROT] = 180.0f;
 		PoseDesanimo(PR(f13), 1); PR(f13)[J_POSX] = qx; PR(f13)[J_POSZ] = RZ + 1.0f; PR(f13)[J_ROT] = 0.0f;
-		frameResultado = f13; ganadorRol = 0;       // gana el que saca
+		frameResultado = f13; ganadorRol = 0;
 		int f14 = NuevoFrame(30);
 		glm::vec3 R1(W1.x * 0.85f, 0.034f, -(PISO_HZ - 2.0f));
 		PelotaArco(f13, f14, W1, R1, 0.28f);
@@ -515,15 +498,11 @@ void CargarPunto(int variante, float sx)
 	}
 }
 
-// Pasa la pose de la animacion (espacio del guion) a la pose real de cada jugador en el mundo
-void SincronizarEstado()
-{
-	for (int rol = 0; rol < 2; rol++)
-	{
+void SincronizarEstado() {
+	for (int rol = 0; rol < 2; rol++) {
 		int p = rol == 0 ? rolS : rolR;
 		for (int j = 0; j < J_COUNT; j++) estado[p][j] = cur[rol * J_COUNT + j];
-		if (volteo)
-		{
+		if (volteo) {
 			estado[p][J_POSX] = -estado[p][J_POSX];
 			estado[p][J_POSZ] = -estado[p][J_POSZ];
 			estado[p][J_ROT] += 180.0f;
@@ -534,36 +513,28 @@ void SincronizarEstado()
 	pelotaMundo = b;
 }
 
-void InterpolacionPunto()
-{
+void InterpolacionPunto() {
 	for (int j = 0; j < NV; j++) KFinc[j] = (KF[playIndex + 1][j] - KF[playIndex][j]) / KFsteps[playIndex + 1];
 }
 
-// Inicia un punto: decide quien saca, toma la pose actual de los jugadores y arma los keyframes
-void IniciarPunto()
-{
+void IniciarPunto() {
 	if (playPunto || marcador.terminado) return;
 	rolS = marcador.servidor; rolR = 1 - rolS;
 	volteo = (rolS == 1);
-	// pose actual del mundo -> espacio del guion
-	for (int rol = 0; rol < 2; rol++)
-	{
+	for (int rol = 0; rol < 2; rol++) {
 		int p = rol == 0 ? rolS : rolR;
 		for (int j = 0; j < J_COUNT; j++) cur[rol * J_COUNT + j] = estado[p][j];
-		if (volteo)
-		{
+		if (volteo) {
 			cur[rol * J_COUNT + J_POSX] = -cur[rol * J_COUNT + J_POSX];
 			cur[rol * J_COUNT + J_POSZ] = -cur[rol * J_COUNT + J_POSZ];
 			cur[rol * J_COUNT + J_ROT] -= 180.0f;
 		}
 	}
-	float sx = ((marcador.pts[0] + marcador.pts[1]) % 2 == 0) ? 1.5f : -1.5f;     // lado del saque
+	float sx = ((marcador.pts[0] + marcador.pts[1]) % 2 == 0) ? 1.5f : -1.5f;
 	int variante = rand() % 2;
 	CargarPunto(variante, sx);
-	// el giro de cada jugador se acerca por el camino mas corto
-	for (int rol = 0; rol < 2; rol++)
-	{
-		float &r0 = KF[0][rol * J_COUNT + J_ROT];
+	for (int rol = 0; rol < 2; rol++) {
+		float& r0 = KF[0][rol * J_COUNT + J_ROT];
 		float r1 = KF[1][rol * J_COUNT + J_ROT];
 		while (r1 - r0 > 180.0f) r0 += 360.0f;
 		while (r1 - r0 < -180.0f) r0 -= 360.0f;
@@ -576,30 +547,24 @@ void IniciarPunto()
 	std::cout << "Saca " << NOMBRES[rolS] << std::endl;
 }
 
-// Un paso de la animacion (se llama a 60 pasos por segundo)
-void AnimationPunto()
-{
+void AnimationPunto() {
 	if (!playPunto) return;
-	if (i_curr_steps >= KFsteps[playIndex + 1])
-	{
+	if (i_curr_steps >= KFsteps[playIndex + 1]) {
 		playIndex++;
 		i_curr_steps = 0;
-		if (playIndex == frameResultado)
-		{
+		if (playIndex == frameResultado) {
 			int ganador = ganadorRol == 0 ? rolS : rolR;
 			SumarPunto(ganador);
 			std::cout << "Punto para " << NOMBRES[ganador] << "   [" << NOMBRES[0] << " " << marcador.juegos[0] << " - " << marcador.juegos[1] << " " << NOMBRES[1] << "]" << std::endl;
 		}
-		if (playIndex >= NF - 1)
-		{
+		if (playIndex >= NF - 1) {
 			playPunto = false;
 			pelotaVisible = false;
 			return;
 		}
 		InterpolacionPunto();
 	}
-	else
-	{
+	else {
 		for (int j = 0; j < NV; j++) cur[j] += KFinc[j];
 		i_curr_steps++;
 	}
@@ -607,16 +572,16 @@ void AnimationPunto()
 }
 
 // ===========================================================================================
-//  Camara: 1 libre, 2 primera persona del juez, 3 transmision TV, 4 tercera persona, 5 primera persona del jugador
+//  Camara
 // ===========================================================================================
-glm::mat4 ObtenerVista(float &fov)
+glm::mat4 ObtenerVista(float& fov)
 {
 	fov = 45.0f;
 	glm::vec3 pelota = pelotaVisible ? pelotaMundo : glm::vec3(0.0f, 1.0f, 0.0f);
 	glm::vec3 p0(estado[0][J_POSX], 0.0f, estado[0][J_POSZ]), p1(estado[1][J_POSX], 0.0f, estado[1][J_POSZ]);
 	switch (camModo)
 	{
-	case 2:   // primera persona desde la silla del juez (camara fija, mira la pelota)
+	case 2:
 	{
 		glm::vec3 eye(SILLA_X - 0.50f, 3.32f, 0.0f);
 		glm::vec3 deseado = pelotaVisible ? pelota : (p0 + p1) * 0.5f + glm::vec3(0.0f, 1.0f, 0.0f);
@@ -624,7 +589,7 @@ glm::mat4 ObtenerVista(float &fov)
 		fov = 60.0f;
 		return glm::lookAt(eye, juezTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
-	case 3:   // camara de transmision
+	case 3:
 	{
 		glm::vec3 pos = tvPosicion == 0 ? glm::vec3(-22.0f, 8.6f, 0.0f) : glm::vec3(0.0f, 7.2f, 29.6f);
 		glm::vec3 medio = (p0 + p1) * 0.5f + glm::vec3(0.0f, 1.0f, 0.0f);
@@ -633,7 +598,7 @@ glm::mat4 ObtenerVista(float &fov)
 		fov = 26.0f;
 		return glm::lookAt(pos, tvTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
-	case 4:   // tercera persona: detras del jugador seguido
+	case 4:
 	{
 		float rot = glm::radians(estado[seguido][J_ROT]);
 		glm::vec3 fwd(sinf(rot), 0.0f, cosf(rot));
@@ -644,7 +609,7 @@ glm::mat4 ObtenerVista(float &fov)
 		terceraPos += (deseada - terceraPos) * 0.1f;
 		return glm::lookAt(terceraPos, c + fwd * 3.0f, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
-	case 5:   // primera persona del jugador seguido (desde su cabeza)
+	case 5:
 	{
 		MatJug m;
 		CalcularJugador(estado[seguido], 1.0f, m);
@@ -663,12 +628,12 @@ glm::mat4 ObtenerVista(float &fov)
 }
 
 // ===========================================================================================
-//  Texturas sueltas y cubemaps (como en el ejemplo)
+//  Texturas y Cubemaps
 // ===========================================================================================
-GLuint CargarTextura(const char *ruta)
+GLuint CargarTextura(const char* ruta)
 {
 	int w, h;
-	unsigned char *img = SOIL_load_image(ruta, &w, &h, 0, SOIL_LOAD_RGBA);
+	unsigned char* img = SOIL_load_image(ruta, &w, &h, 0, SOIL_LOAD_RGBA);
 	if (!img) { std::cout << "No se pudo cargar la textura " << ruta << std::endl; return 0; }
 	GLuint id;
 	glGenTextures(1, &id);
@@ -684,9 +649,9 @@ GLuint CargarTextura(const char *ruta)
 	return id;
 }
 
-GLuint CargarCubemap(const std::string &prefijo)
+GLuint CargarCubemap(const std::string& prefijo)
 {
-	const char *caras[6] = { "px", "nx", "py", "ny", "pz", "nz" };
+	const char* caras[6] = { "px", "nx", "py", "ny", "pz", "nz" };
 	GLuint id;
 	glGenTextures(1, &id);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, id);
@@ -694,7 +659,7 @@ GLuint CargarCubemap(const std::string &prefijo)
 	{
 		std::string ruta = "images/Skybox/" + prefijo + "_" + caras[i] + ".jpg";
 		int w, h;
-		unsigned char *img = SOIL_load_image(ruta.c_str(), &w, &h, 0, SOIL_LOAD_RGB);
+		unsigned char* img = SOIL_load_image(ruta.c_str(), &w, &h, 0, SOIL_LOAD_RGB);
 		if (!img) { std::cout << "No se pudo cargar " << ruta << std::endl; continue; }
 		glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, img);
 		SOIL_free_image_data(img);
@@ -710,6 +675,7 @@ GLuint CargarCubemap(const std::string &prefijo)
 // ===========================================================================================
 //  MAIN
 // ===========================================================================================
+
 int main()
 {
 	srand((unsigned int)time(NULL));
@@ -723,7 +689,7 @@ int main()
 	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 	glfwWindowHint(GLFW_SAMPLES, 4);
 
-	GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "Proyecto Final - Escenario Deportivo 3D: TENIS", nullptr, nullptr);
+	GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Proyecto Final - Escenario Deportivo 3D: TENIS", nullptr, nullptr);
 	if (nullptr == window)
 	{
 		std::cout << "Failed to create GLFW window" << std::endl;
@@ -754,45 +720,53 @@ int main()
 	Shader modelShader("Shader/modelLoading.vs", "Shader/modelLoading.frag");
 	Shader skyboxShader("Shader/skybox.vs", "Shader/skybox.frag");
 
-	// ---------- MODELOS (cada objeto del escenario es un .obj) ----------
-	Model Cancha0((char *)"Models/Cancha/CanchaArcilla.obj");
-	Model Cancha1((char *)"Models/Cancha/CanchaPasto.obj");
-	Model Cancha2((char *)"Models/Cancha/CanchaCemento.obj");
-	Model Piso((char *)"Models/Piso/Piso.obj");
-	Model Red((char *)"Models/Red/Red.obj");
-	Model Postes((char *)"Models/Red/Postes.obj");
-	Model SillaJuez((char *)"Models/SillaJuez/SillaJuez.obj");
-	Model CuerpoJuez((char *)"Models/Juez/CuerpoJuez.obj");
-	Model CabezaJuez((char *)"Models/Juez/CabezaJuez.obj");
-	Model BrazoJuez((char *)"Models/Juez/BrazoJuez.obj");
-	Model GradaAzul((char *)"Models/Gradas/GradaAzul.obj");
-	Model GradaRoja((char *)"Models/Gradas/GradaRoja.obj");
-	Model Fila1((char *)"Models/Publico/Fila1.obj");
-	Model Fila2((char *)"Models/Publico/Fila2.obj");
-	Model Fila3((char *)"Models/Publico/Fila3.obj");
-	Model Fila4((char *)"Models/Publico/Fila4.obj");
-	Model Valla1((char *)"Models/Vallas/Valla1.obj");
-	Model Valla2((char *)"Models/Vallas/Valla2.obj");
-	Model Valla3((char *)"Models/Vallas/Valla3.obj");
-	Model Marcador3D((char *)"Models/Marcador/Marcador.obj");
-	Model Torre((char *)"Models/Torre/Torre.obj");
-	Model LamparasOn((char *)"Models/Torre/LamparasEncendidas.obj");
-	Model LamparasOff((char *)"Models/Torre/LamparasApagadas.obj");
-	Model Tunel((char *)"Models/Tunel/Tunel.obj");
-	Model DescansoRojo((char *)"Models/Descanso/DescansoRojo.obj");
-	Model DescansoAzul((char *)"Models/Descanso/DescansoAzul.obj");
-	Model Raqueta((char *)"Models/Raqueta/Raqueta.obj");
-	Model Pelota((char *)"Models/Pelota/Pelota.obj");
-	Model Sombra((char *)"Models/Sombra/Sombra.obj");
-	Model Gato((char *)"Models/Mascotas/miGato.obj");
-	Model Perro((char *)"Models/Mascotas/RedDog.obj");
+	// ---------- MODELOS ----------
+	Model Cancha0((char*)"Models/Cancha/CanchaArcilla.obj");
+	Model Cancha1((char*)"Models/Cancha/CanchaPasto.obj");
+	Model Cancha2((char*)"Models/Cancha/CanchaCemento.obj");
+	Model Piso((char*)"Models/Piso/Piso.obj");
+	Model Red((char*)"Models/Red/Red.obj");
+	Model Postes((char*)"Models/Red/Postes.obj");
+	Model SillaJuez((char*)"Models/SillaJuez/SillaJuez.obj");
+	Model CuerpoJuez((char*)"Models/Juez/CuerpoJuez.obj");
+	Model CabezaJuez((char*)"Models/Juez/CabezaJuez.obj");
+	Model BrazoJuez((char*)"Models/Juez/BrazoJuez.obj");
+	Model GradaAzul((char*)"Models/Gradas/GradaAzul.obj");
+	Model GradaRoja((char*)"Models/Gradas/GradaRoja.obj");
+	Model Fila1((char*)"Models/Publico/Fila1.obj");
+	Model Fila2((char*)"Models/Publico/Fila2.obj");
+	Model Fila3((char*)"Models/Publico/Fila3.obj");
+	Model Fila4((char*)"Models/Publico/Fila4.obj");
+	Model Valla1((char*)"Models/Vallas/Valla1.obj");
+	Model Valla2((char*)"Models/Vallas/Valla2.obj");
+	Model Valla3((char*)"Models/Vallas/Valla3.obj");
+	Model Marcador3D((char*)"Models/Marcador/Marcador.obj");
+	Model Torre((char*)"Models/Torre/Torre.obj");
+	Model LamparasOn((char*)"Models/Torre/LamparasEncendidas.obj");
+	Model LamparasOff((char*)"Models/Torre/LamparasApagadas.obj");
+	Model Tunel((char*)"Models/Tunel/Tunel.obj");
+	Model Raqueta((char*)"Models/Raqueta/Raqueta.obj");
+	Model Pelota((char*)"Models/Pelota/Pelota.obj");
+	Model Sombra((char*)"Models/Sombra/Sombra.obj");
+	Model Perro((char*)"Models/Mascotas/RedDog.obj");
+
+	// Modelos para Linea y Corredor en la zona de Calentamiento
+	Model barraSeparadora((char*)"Models/Red/Postes.obj");
+	Model corredorTorso((char*)"Models/Jugador/Recogepelotas/Torso.obj");
+	Model corredorCabeza((char*)"Models/Jugador/Recogepelotas/Cabeza.obj");
+	Model corredorBrazo((char*)"Models/Jugador/Recogepelotas/Brazo.obj");
+	Model corredorAntebrazo((char*)"Models/Jugador/Recogepelotas/Antebrazo.obj");
+	Model corredorMuslo((char*)"Models/Jugador/Recogepelotas/Muslo.obj");
+	Model corredorPierna((char*)"Models/Jugador/Recogepelotas/Pierna.obj");
+	Model corredorPie((char*)"Models/Jugador/Recogepelotas/Pie.obj");
+
 	PartesJugador JugRojo = CargarJugador("Rojo");
 	PartesJugador JugAzul = CargarJugador("Azul");
 	PartesJugador Ninos = CargarJugador("Recogepelotas");
-	PartesJugador *jug[2] = { &JugRojo, &JugAzul };
-	Model *Cancha[3] = { &Cancha0, &Cancha1, &Cancha2 };
-	Model *Filas[4] = { &Fila1, &Fila2, &Fila3, &Fila4 };
-	Model *Vallas[3] = { &Valla1, &Valla2, &Valla3 };
+	PartesJugador* jug[2] = { &JugRojo, &JugAzul };
+	Model* Cancha[3] = { &Cancha0, &Cancha1, &Cancha2 };
+	Model* Filas[4] = { &Fila1, &Fila2, &Fila3, &Fila4 };
+	Model* Vallas[3] = { &Valla1, &Valla2, &Valla3 };
 
 	// ---------- Skybox (dia y noche) ----------
 	GLfloat skyboxVertices[] = {
@@ -809,12 +783,12 @@ int main()
 	glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid *)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (GLvoid*)0);
 	glBindVertexArray(0);
 	GLuint cubemapDia = CargarCubemap("dia");
 	GLuint cubemapNoche = CargarCubemap("noche");
 
-	// ---------- Cuadro (VAO) para los digitos del marcador ----------
+	// ---------- Cuadro (VAO) para los digitos del marcador y cuerda/linea ----------
 	GLfloat cuadro[] = {
 		-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,    0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f,    0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,
 		-0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,    0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f,    -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f };
@@ -824,21 +798,38 @@ int main()
 	glBindVertexArray(cuadroVAO);
 	glBindBuffer(GL_ARRAY_BUFFER, cuadroVBO);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(cuadro), cuadro, GL_STATIC_DRAW);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid *)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid *)(3 * sizeof(GLfloat)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid *)(6 * sizeof(GLfloat)));
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
 	glEnableVertexAttribArray(2);
 	glBindVertexArray(0);
 
+	// Texturas simples de colores
+	unsigned char pixelBlanco[4] = { 250, 250, 250, 255 };
+	GLuint texLineaBlanca; glGenTextures(1, &texLineaBlanca); glBindTexture(GL_TEXTURE_2D, texLineaBlanca);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixelBlanco);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	unsigned char pixelRojo[4] = { 235, 35, 45, 255 };
+	glGenTextures(1, &texGloboRojo); glBindTexture(GL_TEXTURE_2D, texGloboRojo);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixelRojo);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+	unsigned char pixelAzul[4] = { 30, 105, 245, 255 };
+	glGenTextures(1, &texGloboAzul); glBindTexture(GL_TEXTURE_2D, texGloboAzul);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixelAzul);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
 	GLuint texDigito[10], texPts[5], texSaque;
 	for (int i = 0; i < 10; i++) texDigito[i] = CargarTextura((std::string("images/Marcador/d") + std::to_string(i) + ".png").c_str());
-	const char *nombresPts[5] = { "p0", "p15", "p30", "p40", "pAD" };
+	const char* nombresPts[5] = { "p0", "p15", "p30", "p40", "pAD" };
 	for (int i = 0; i < 5; i++) texPts[i] = CargarTextura((std::string("images/Marcador/") + nombresPts[i] + ".png").c_str());
 	texSaque = CargarTextura("images/Marcador/saque.png");
 
-	// ---------- Gradas: lista de modulos de 8 m ----------
+	// ---------- Gradas ----------
 	struct Modulo { glm::vec3 origen; float yaw; int tipo; };
 	std::vector<Modulo> modulos;
 	for (int i = 0; i < 5; i++)
@@ -847,14 +838,14 @@ int main()
 		modulos.push_back({ glm::vec3(-12.0f, 0.0f, z), -90.0f, 0 });     // oeste
 		modulos.push_back({ glm::vec3(12.0f, 0.0f, z), 90.0f, 0 });       // este
 	}
-	float xs[4] = { -15.3f, -7.3f, 7.3f, 15.3f };                          // los fondos dejan libre la entrada del tunel
+	float xs[4] = { -15.3f, -7.3f, 7.3f, 15.3f };
 	for (int i = 0; i < 4; i++)
 	{
 		modulos.push_back({ glm::vec3(xs[i], 0.0f, 20.5f), 0.0f, 1 });     // norte
 		modulos.push_back({ glm::vec3(xs[i], 0.0f, -20.5f), 180.0f, 1 });  // sur
 	}
 
-	// ---------- Estado inicial de los personajes ----------
+	// ---------- Estado inicial ----------
 	ReiniciarMarcador();
 	for (int p = 0; p < 2; p++)
 	{
@@ -873,10 +864,11 @@ int main()
 		estadoNino[k][J_POSZ] = k == 0 ? 19.0f : -19.0f;
 		estadoNino[k][J_ROT] = k == 0 ? 180.0f : 0.0f;
 	}
+	PoseListo(estadoCorredor);
 	memset(cur, 0, sizeof(cur));
 
 	std::cout << "\n=== TENIS 3D ===  Controles: W A S D + mouse (camara libre) | 1-5 camaras | C cambia vista | E jugar punto | Q automatico"
-			  << " | J/K punto a jugador 1/2 | L reflectores | N dia/noche | T superficie | B ola | O ovacion | R reiniciar | ESC salir\n" << std::endl;
+		<< " | J/K punto a jugador 1/2 | M pausar corredor calentamiento | L reflectores | N dia/noche | T superficie | B ola | O ovacion | R reiniciar | ESC salir\n" << std::endl;
 
 
 	glm::mat4 projection;
@@ -897,16 +889,13 @@ int main()
 		glfwPollEvents();
 		DoMovement();
 
-		// animacion a 60 pasos por segundo (independiente de los FPS)
 		acumulado += deltaTime;
 		int guarda = 0;
 		while (acumulado >= PASO && guarda < 6) { AnimationPunto(); acumulado -= PASO; guarda++; }
 		if (guarda == 6) acumulado = 0.0f;
 
-		// juego automatico
 		if (autoJuego && !playPunto && !marcador.terminado) IniciarPunto();
 
-		// transiciones suaves: dia/noche, reflectores, ola, festejo
 		float objetivoDia = diaObjetivo ? 1.0f : 0.0f;
 		dia += (objetivoDia - dia) * (deltaTime * 1.5f);
 		luzReflectores += ((reflectores ? 1.0f : 0.0f) - luzReflectores) * (deltaTime * 3.0f);
@@ -914,7 +903,34 @@ int main()
 		if (festejo > 0.0f) festejo -= deltaTime * 0.25f;
 		if (pulsoMarcador > 0.0f) pulsoMarcador -= deltaTime * 0.9f;
 
-		// velocidad de cada jugador (para el ciclo de caminata)
+		// Logica de globos (tiempo de vuelo e inflado)
+		if (globosActivos)
+		{
+			tiempoGlobos += deltaTime;
+			if (tiempoGlobos > 7.5f) globosActivos = false;
+		}
+
+		// Logica de la persona corriendo en la zona de calentamiento
+		if (animCalentamiento)
+		{
+			float velocidadCarrera = 4.2f;
+			corredorZ += corredorDir * velocidadCarrera * deltaTime;
+			cicloCarrera += deltaTime * 10.5f;
+
+			if (corredorZ >= 14.5f)
+			{
+				corredorZ = 14.5f;
+				corredorDir = -1.0f;
+				corredorRotY = 180.0f;
+			}
+			else if (corredorZ <= -14.5f)
+			{
+				corredorZ = -14.5f;
+				corredorDir = 1.0f;
+				corredorRotY = 0.0f;
+			}
+		}
+
 		for (int p = 0; p < 2; p++)
 		{
 			glm::vec2 pos(estado[p][J_POSX], estado[p][J_POSZ]);
@@ -933,7 +949,6 @@ int main()
 		projection = glm::perspective(glm::radians(fov), (GLfloat)SCREEN_WIDTH / (GLfloat)SCREEN_HEIGHT, 0.1f, 500.0f);
 		glm::vec3 eyePos = camModo == 1 ? camera.GetPosition() : glm::vec3(glm::inverse(view)[3]);
 
-		// ----- luces -----
 		lightingShader.Use();
 		lightingShader.setMat4("view", view);
 		lightingShader.setMat4("projection", projection);
@@ -967,7 +982,6 @@ int main()
 		lightingShader.setVec3("pointPos", 0.0f, 2.4f, TUNEL_Z - 4.0f);
 		lightingShader.setVec3("pointColor", 1.0f, 0.88f, 0.65f);
 
-		// atajo para dibujar un modelo con una matriz
 #define DIBUJAR(shader, modelo, M) { (shader).setMat4("model", (M)); (modelo).Draw(shader); }
 		glm::mat4 I(1.0f);
 
@@ -976,7 +990,7 @@ int main()
 		DIBUJAR(lightingShader, *Cancha[superficie], I);
 		DIBUJAR(lightingShader, Piso, I);
 		lightingShader.setFloat("specStrength", 0.15f);
-		for (int i = 0; i < 10; i++)          // vallas de publicidad (4 m cada una) en los 4 lados
+		for (int i = 0; i < 10; i++)
 		{
 			float z = -18.0f + 4.0f * i;
 			DIBUJAR(lightingShader, *Vallas[i % 3], Tr(-PISO_HX + 0.125f, 0.0f, z) * Ry(90.0f));
@@ -986,17 +1000,17 @@ int main()
 		{
 			float x = -8.0f + 4.0f * i;
 			DIBUJAR(lightingShader, *Vallas[(i + 2) % 3], Tr(x, 0.0f, PISO_HZ - 0.125f) * Ry(180.0f));
-			if (i != 2) DIBUJAR(lightingShader, *Vallas[i % 3], Tr(x, 0.0f, -PISO_HZ + 0.125f));     // en el centro queda la entrada al tunel
+			if (i != 2) DIBUJAR(lightingShader, *Vallas[i % 3], Tr(x, 0.0f, -PISO_HZ + 0.125f));
 		}
 		DIBUJAR(lightingShader, Postes, I);
 		DIBUJAR(lightingShader, Tunel, Tr(0.0f, 0.0f, TUNEL_Z) * Ry(180.0f));
 
-		// ----- silla del juez y el juez (la cabeza sigue la pelota) -----
+		// ----- silla del juez y el juez -----
 		glm::mat4 sillaM = Tr(SILLA_X, 0.0f, 0.0f) * Ry(-90.0f);
 		DIBUJAR(lightingShader, SillaJuez, sillaM);
 		{
 			glm::vec3 pel = pelotaVisible ? pelotaMundo : glm::vec3(0.0f, 1.0f, 0.0f);
-			float objetivo = glm::degrees(atan2f(pel.x - SILLA_X, pel.z)) + 90.0f;      // respecto al frente (-X)
+			float objetivo = glm::degrees(atan2f(pel.x - SILLA_X, pel.z)) + 90.0f;
 			while (objetivo > 180.0f) objetivo -= 360.0f;
 			while (objetivo < -180.0f) objetivo += 360.0f;
 			if (objetivo > 70.0f) objetivo = 70.0f; if (objetivo < -70.0f) objetivo = -70.0f;
@@ -1009,9 +1023,102 @@ int main()
 			DIBUJAR(lightingShader, BrazoJuez, cadera * Tr(0.205f, 0.50f, 0.0f) * Rx(-20.0f));
 		}
 
-		// ----- zona de descanso (dos lados) -----
-		DIBUJAR(lightingShader, DescansoRojo, Tr(DESCANSO_X, 0.0f, 4.4f) * Ry(90.0f));
-		DIBUJAR(lightingShader, DescansoAzul, Tr(DESCANSO_X, 0.0f, -4.4f) * Ry(90.0f) * glm::scale(glm::mat4(1.0f), glm::vec3(-1.0f, 1.0f, 1.0f)));
+		// ----- ZONA DE CALENTAMIENTO (Línea + Persona corriendo de lado a lado) -----
+		glBindVertexArray(cuadroVAO);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texLineaBlanca);
+		lightingShader.setMat4("model", Tr(X_LINEA_DIVISORIA, 0.026f, 0.0f) * Rx(-90.0f) * glm::scale(glm::mat4(1.0f), glm::vec3(0.18f, 32.0f, 1.0f)));
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+
+		// Articulando a la persona que corre
+		for (int j = 0; j < J_COUNT; j++) estadoCorredor[j] = 0.0f;
+		estadoCorredor[J_POSX] = X_CARRIL_CORREDOR;
+		estadoCorredor[J_POSZ] = corredorZ;
+		estadoCorredor[J_ROT] = corredorRotY;
+		estadoCorredor[J_JUMP] = fabsf(sinf(cicloCarrera)) * 0.08f;
+		estadoCorredor[J_LEAN] = 14.0f;
+		estadoCorredor[J_TORSO_PITCH] = 8.0f;
+		estadoCorredor[J_TORSO_YAW] = sinf(cicloCarrera) * 10.0f;
+
+		for (int s = 0; s < 2; s++)
+		{
+			float fase = cicloCarrera + (s == 0 ? 0.0f : 3.14159f);
+			float c = cosf(fase); if (c < 0.0f) c = 0.0f;
+			int H = s == 0 ? J_HIP_R : J_HIP_L;
+			int N = s == 0 ? J_KNEE_R : J_KNEE_L;
+			estadoCorredor[H] = 38.0f * sinf(fase) + 10.0f;
+			estadoCorredor[N] = 18.0f + 65.0f * powf(c, 1.3f);
+		}
+		estadoCorredor[J_SHR_PITCH] = -38.0f * sinf(cicloCarrera) + 18.0f;
+		estadoCorredor[J_SHL_PITCH] = 38.0f * sinf(cicloCarrera) + 18.0f;
+		estadoCorredor[J_ELB_R] = 85.0f;
+		estadoCorredor[J_ELB_L] = 85.0f;
+		estadoCorredor[J_SHR_ROLL] = 8.0f;
+		estadoCorredor[J_SHL_ROLL] = 8.0f;
+
+		MatJug mc;
+		CalcularJugador(estadoCorredor, 0.96f, mc);
+		DIBUJAR(lightingShader, *JugAzul.torso, mc.torso);
+		DIBUJAR(lightingShader, *JugAzul.cabeza, mc.cabeza);
+		DIBUJAR(lightingShader, *JugAzul.brazo, mc.brazoD);
+		DIBUJAR(lightingShader, *JugAzul.antebrazo, mc.antD);
+		DIBUJAR(lightingShader, *JugAzul.brazo, mc.brazoI);
+		DIBUJAR(lightingShader, *JugAzul.antebrazo, mc.antI);
+		for (int s = 0; s < 2; s++)
+		{
+			DIBUJAR(lightingShader, *JugAzul.muslo, mc.muslo[s]);
+			DIBUJAR(lightingShader, *JugAzul.pierna, mc.pierna[s]);
+			DIBUJAR(lightingShader, *JugAzul.pie, mc.pie[s]);
+		}
+
+// ----- GLOBOS DE CELEBRACION (Escalacion Volumetrica y Vuelo) -----
+		if (globosActivos)
+		{
+			for (int i = 0; i < NUM_GLOBOS; i++)
+			{
+				float factorEscala = 0.0f;
+				float alturaVuelo = 0.0f;
+				float balanceoX = 0.0f;
+
+				if (tiempoGlobos < 1.5f)
+				{
+					float progresoInflado = tiempoGlobos / 1.5f;
+					factorEscala = 0.05f + 0.95f * sinf(progresoInflado * 1.5708f);
+				}
+				else
+				{
+					float tiempoVuelo = tiempoGlobos - 1.5f;
+					factorEscala = 1.0f + 0.08f * sinf(tiempoVuelo * 6.0f + i);
+					alturaVuelo = tiempoVuelo * 3.2f;
+					balanceoX = sinf(tiempoVuelo * 2.5f + globos[i].faseOscilacion) * 0.45f;
+				}
+
+				glm::vec3 posActual = globos[i].posBase + glm::vec3(balanceoX, alturaVuelo, 0.0f);
+				glm::mat4 matGlobo = Tr(posActual.x, posActual.y, posActual.z)
+					* Rz(sinf(tiempo * 2.5f + i) * 8.0f)
+					* glm::scale(glm::mat4(1.0f), glm::vec3(10.5f * factorEscala, 13.5f * factorEscala, 10.5f * factorEscala));
+
+				// 1. Dibujar el globo usando color solido desde el shader (sin tocar Mesh.h privado)
+				glUniform1i(glGetUniformLocation(lightingShader.Program, "useTexture"), 0);
+				glm::vec4 colorGlobo = (colorGloboJugador == 0) ? glm::vec4(0.92f, 0.14f, 0.18f, 1.0f) : glm::vec4(0.12f, 0.41f, 0.96f, 1.0f);
+				glUniform4fv(glGetUniformLocation(lightingShader.Program, "objectColor"), 1, glm::value_ptr(colorGlobo));
+
+				DIBUJAR(lightingShader, Pelota, matGlobo);
+
+				glUniform1i(glGetUniformLocation(lightingShader.Program, "useTexture"), 1); // Reactivar texturas
+
+				// 2. Cordon colgando del globo
+				glBindVertexArray(cuadroVAO);
+				glBindTexture(GL_TEXTURE_2D, texLineaBlanca);
+				glm::mat4 matCordon = Tr(posActual.x, posActual.y - 0.65f * factorEscala, posActual.z)
+					* glm::scale(glm::mat4(1.0f), glm::vec3(0.03f, 0.65f * factorEscala, 0.03f));
+				lightingShader.setMat4("model", matCordon);
+				glDrawArrays(GL_TRIANGLES, 0, 6);
+			}
+			glBindVertexArray(0);
+		}
+
 
 		// ----- torres con reflectores -----
 		for (int i = 0; i < 4; i++)
@@ -1030,8 +1137,8 @@ int main()
 			{
 				float alto = (r + 1) * GR_ALZA + 0.45f;
 				float salto = 0.0f;
-				if (festejo > 0.0f) salto += festejo * fabsf(sinf(tiempo * 8.0f + r * 0.9f + m)) * 0.10f;           // el publico salta
-				if (olaOn > 0.01f) { float w = sinf(ang * 3.0f - tiempo * 3.0f + r * 0.05f); if (w > 0.5f) salto += olaOn * (w - 0.5f) * 0.8f; }   // la ola
+				if (festejo > 0.0f) salto += festejo * fabsf(sinf(tiempo * 8.0f + r * 0.9f + m)) * 0.10f;
+				if (olaOn > 0.01f) { float w = sinf(ang * 3.0f - tiempo * 3.0f + r * 0.05f); if (w > 0.5f) salto += olaOn * (w - 0.5f) * 0.8f; }
 				DIBUJAR(lightingShader, *Filas[(m + r) % 4], base * Tr(0.0f, alto + salto, r * GR_PROF + 0.58f));
 			}
 		}
@@ -1042,7 +1149,6 @@ int main()
 		{
 			float v[J_COUNT];
 			memcpy(v, estado[p], sizeof(v));
-			// respiracion en reposo y ciclo de caminata cuando se desplazan
 			if (!playPunto || velocidad[p] < 0.3f) { float b = sinf(tiempo * 2.1f + p) * 2.0f; v[J_KNEE_R] += b; v[J_KNEE_L] += b; v[J_TORSO_PITCH] += b * 0.3f; }
 			if (velocidad[p] > 0.3f)
 			{
@@ -1074,7 +1180,7 @@ int main()
 				DIBUJAR(lightingShader, *jug[p]->pierna, mj.pierna[s]);
 				DIBUJAR(lightingShader, *jug[p]->pie, mj.pie[s]);
 			}
-			if (!ocultarCabeza) DIBUJAR(lightingShader, Raqueta, mj.raqueta);     // en 1ra persona no se dibuja para no tapar la vista
+			if (!ocultarCabeza) DIBUJAR(lightingShader, Raqueta, mj.raqueta);
 		}
 		// recogepelotas: agachados en las esquinas, miran la pelota
 		for (int k = 0; k < 2; k++)
@@ -1103,24 +1209,18 @@ int main()
 			}
 		}
 
-		// ----- mascotas: el gato patrulla junto al muro, el perro vigila el tunel -----
-		{
-			float largo = 26.0f, u = fmodf(tiempo * 0.45f, 2.0f * largo);
-			bool ida = u < largo;
-			float z = ida ? -13.0f + u : 13.0f - (u - largo);
-			DIBUJAR(lightingShader, Gato, Tr(-9.2f, 0.0f, z) * Ry(ida ? 0.0f : 180.0f) * Esc(0.07f));
-			DIBUJAR(lightingShader, Perro, Tr(3.9f, 0.38f, -17.6f) * Ry(180.0f) * Esc(1.0f));
-		}
+		// ----- mascota: perro vigila tunel (Gato eliminado) -----
+		DIBUJAR(lightingShader, Perro, Tr(3.9f, 0.38f, -17.6f) * Ry(180.0f) * Esc(1.0f));
 
 		// ----- pelota (dibujada un poco mas grande para que se vea) -----
 		if (pelotaVisible)
 		{
 			glm::vec3 pb = pelotaMundo;
-			if (playPunto && playIndex < frameLiberar)         // antes del lanzamiento va en la mano izquierda
+			if (playPunto && playIndex < frameLiberar)
 			{
 				float v[J_COUNT];
 				memcpy(v, estado[rolS], sizeof(v));
-				MatJug mm; CalcularJugador(v, 1.0f, mm);       // mano izquierda del que saca, en el mundo
+				MatJug mm; CalcularJugador(v, 1.0f, mm);
 				pb = glm::vec3(mm.antI * glm::vec4(0.0f, -0.32f, 0.02f, 1.0f));
 			}
 			DIBUJAR(lightingShader, Pelota, Tr(pb.x, pb.y, pb.z) * Ry(tiempo * 300.0f) * Rx(tiempo * 200.0f) * Esc(1.8f) * Tr(0.0f, -0.0335f, 0.0f));
@@ -1158,7 +1258,6 @@ int main()
 			glm::mat4 Mb = Tr(0.0f, MARCADOR_Y, MARCADOR_Z) * Ry(180.0f) * Esc(k);
 			modelShader.setFloat("brillo", 1.0f + 0.5f * pulsoMarcador);
 			DIBUJAR(modelShader, Marcador3D, Mb);
-			// digitos del marcador (cuadros con textura sobre la pantalla)
 			glBindVertexArray(cuadroVAO);
 			glActiveTexture(GL_TEXTURE0);
 			float filaY[2] = { 0.30f, -1.40f };
@@ -1195,7 +1294,7 @@ int main()
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
-		// ----- skybox (al final, como en el ejemplo) -----
+		// ----- skybox -----
 		glDepthFunc(GL_LEQUAL);
 		skyboxShader.Use();
 		glm::mat4 viewSky = glm::mat4(glm::mat3(view));
@@ -1227,7 +1326,7 @@ void DoMovement()
 	if (keys[GLFW_KEY_D]) camera.ProcessKeyboard(RIGHT, deltaTime);
 }
 
-void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mode)
+void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mode)
 {
 	if (GLFW_KEY_ESCAPE == key && GLFW_PRESS == action) glfwSetWindowShouldClose(window, GL_TRUE);
 
@@ -1245,14 +1344,15 @@ void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mode
 	case GLFW_KEY_3: camModo = 3; break;
 	case GLFW_KEY_4: camModo = 4; break;
 	case GLFW_KEY_5: camModo = 5; break;
-	case GLFW_KEY_C: tvPosicion = 1 - tvPosicion; seguido = 1 - seguido; break;          // cambia la camara de TV y el jugador seguido
-	case GLFW_KEY_E: IniciarPunto(); break;                                                 // jugar un punto completo
-	case GLFW_KEY_Q: autoJuego = !autoJuego; break;                                         // modo automatico
-	case GLFW_KEY_J: if (!playPunto) SumarPunto(0); break;                                  // punto directo para ROJAS
-	case GLFW_KEY_K: if (!playPunto) SumarPunto(1); break;                                  // punto directo para GARCIA
+	case GLFW_KEY_C: tvPosicion = 1 - tvPosicion; seguido = 1 - seguido; break;
+	case GLFW_KEY_E: IniciarPunto(); break;
+	case GLFW_KEY_Q: autoJuego = !autoJuego; break;
+	case GLFW_KEY_J: if (!playPunto) SumarPunto(0); break;
+	case GLFW_KEY_K: if (!playPunto) SumarPunto(1); break;
+	case GLFW_KEY_M: animCalentamiento = !animCalentamiento; break;                         // pausar/reanudar persona corriendo en calentamiento
 	case GLFW_KEY_R: if (!playPunto) ReiniciarMarcador(); break;
 	case GLFW_KEY_L: reflectores = !reflectores; break;
-	case GLFW_KEY_N: diaObjetivo = !diaObjetivo; reflectores = !diaObjetivo; break;         // de noche se encienden los reflectores
+	case GLFW_KEY_N: diaObjetivo = !diaObjetivo; reflectores = !diaObjetivo; break;
 	case GLFW_KEY_T: superficie = (superficie + 1) % 3; break;
 	case GLFW_KEY_B: olaActiva = !olaActiva; break;
 	case GLFW_KEY_O: festejo = 1.0f; break;
@@ -1260,7 +1360,7 @@ void KeyCallback(GLFWwindow *window, int key, int scancode, int action, int mode
 	}
 }
 
-void MouseCallback(GLFWwindow *window, double xPos, double yPos)
+void MouseCallback(GLFWwindow* window, double xPos, double yPos)
 {
 	if (firstMouse)
 	{

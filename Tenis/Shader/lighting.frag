@@ -39,10 +39,12 @@ uniform Material material;
 uniform sampler2D texture_diffuse1;
 uniform float specStrength;
 uniform float opacity;
+uniform int useTexture = 1;
+uniform vec4 objectColor = vec4(1.0);
 
 void main()
 {
-    vec4 texColor = texture(texture_diffuse1, TexCoords);
+        vec4 texColor = (useTexture == 1) ? texture(texture_diffuse1, TexCoords) : objectColor;
     if (texColor.a < 0.1)
         discard;
 
