@@ -1,6 +1,0 @@
-# Pelota de tenis
-newmtl Fieltro
-Kd 1.0 1.0 1.0
-Ks 0.05 0.05 0.05
-Ns 4
-map_Kd pelota.png

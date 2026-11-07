@@ -15,6 +15,13 @@
 // GLFW
 #include <GLFW/glfw3.h>
 
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
+void Sonar(const char* a) { PlaySoundA(a, NULL, SND_FILENAME | SND_ASYNC); }
+
 // Otras librerias
 #include "Shader.h"
 #include "Camera.h"
@@ -39,6 +46,7 @@ int SCREEN_WIDTH, SCREEN_HEIGHT;
 
 // Camara libre 
 Camera camera(glm::vec3(0.0f, 6.0f, 18.5f), glm::vec3(0.0f, 1.0f, 0.0f), -90.0f, -16.0f);
+Camera camCaminar(glm::vec3(0.0f, 1.7f, 16.0f), glm::vec3(0.0f, 1.0f, 0.0f), -90.0f, 0.0f);
 GLfloat lastX = WIDTH / 2.0, lastY = HEIGHT / 2.0;
 bool keys[1024];
 bool firstMouse = true;
@@ -53,6 +61,21 @@ const float MARCADOR_Z = 31.0f, MARCADOR_Y = 9.6f;
 const float TUNEL_Z = -19.0f;
 const float GR_PROF = 0.85f, GR_ALZA = 0.42f;
 const int GR_FILAS = 10;
+
+float AlturaSuelo(float x, float z)
+{
+	float h = 0.0f;
+	auto escalon = [](float t) {
+		if (t <= 0.0f) return 0.0f;
+		float r = t / GR_PROF;
+		if (r > (float)GR_FILAS) r = (float)GR_FILAS;
+		return r * GR_ALZA;
+	};
+	if (fabsf(z) < 20.0f) h = fmaxf(h, escalon(fabsf(x) - 12.0f));  // gradas este/oeste
+	if (fabsf(x) < 19.3f) h = fmaxf(h, escalon(fabsf(z) - 20.5f));  // gradas norte/sur
+	return h;
+}
+
 
 // ============================================================================
 // VARIABLES PARA LA ZONA DE CALENTAMIENTO (PERSONA CORRIENDO)
@@ -157,6 +180,7 @@ void SumarPunto(int p)
 	pulsoMarcador = 1.0f;
 	festejo = 1.0f;
 	ActivarGlobos(p); // Lanza globos de color al anotar
+	Sonar("Sonidos/aplauso.wav");
 
 	if (marcador.pts[p] >= 4 && marcador.pts[p] - marcador.pts[o] >= 2)
 	{
@@ -268,6 +292,8 @@ int playIndex = 0;
 int i_curr_steps = 0;
 bool playPunto = false;
 int frameLiberar = 4, frameResultado = 0, ganadorRol = 0;
+int frameContacto = -1;
+
 int rolS = 0, rolR = 1;
 bool volteo = false;
 bool pelotaVisible = false;
@@ -407,6 +433,7 @@ void CargarPunto(int variante, float sx) {
 	}
 	frameLiberar = fs[2];
 	int fTrofeo = fs[3], fCaida = fs[4], fContacto = fs[5];
+	frameContacto = fContacto;
 	for (int e = 3; e < 8; e++) { PR(fs[e])[J_KNEE_R] = 58.0f; PR(fs[e])[J_KNEE_L] = 58.0f; PR(fs[e])[J_HIP_R] = 32.0f; PR(fs[e])[J_HIP_L] = 32.0f; }
 
 	glm::vec3 manoL = PosManoIzq(PS(fs[2]));
@@ -563,6 +590,7 @@ void AnimationPunto() {
 	if (i_curr_steps >= KFsteps[playIndex + 1]) {
 		playIndex++;
 		i_curr_steps = 0;
+		if (playIndex == frameContacto) Sonar("Sonidos/golpe.wav");
 		if (playIndex == frameResultado) {
 			int ganador = ganadorRol == 0 ? rolS : rolR;
 			SumarPunto(ganador);
@@ -633,6 +661,13 @@ glm::mat4 ObtenerVista(float& fov)
 		fov = 70.0f;
 		return glm::lookAt(cabeza + fwd * 0.14f, jugadorTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 	}
+	case 6: 
+	{
+		fov = 60.0f; 
+		return camCaminar.GetViewMatrix();
+	}
+	
+	
 	default:
 		return camera.GetViewMatrix();
 	}
@@ -730,6 +765,25 @@ int main()
 	Shader lightingShader("Shader/lighting.vs", "Shader/lighting.frag");
 	Shader modelShader("Shader/modelLoading.vs", "Shader/modelLoading.frag");
 	Shader skyboxShader("Shader/skybox.vs", "Shader/skybox.frag");
+	
+	Shader depthShader("Shader/depth.vs", "Shader/depth.frag");
+	const GLuint SHADOW_W = 4096, SHADOW_H = 4096;   // si va lento, usar 2048
+	GLuint depthMapFBO, depthMap;
+	glGenFramebuffers(1, &depthMapFBO);
+	glGenTextures(1, &depthMap);
+	glBindTexture(GL_TEXTURE_2D, depthMap);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_W, SHADOW_H, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+	float borde[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borde);
+	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// ---------- MODELOS ----------
 	Model Cancha0((char*)"Models/Cancha/CanchaArcilla.obj");
@@ -760,6 +814,8 @@ int main()
 	Model Pelota((char*)"Models/Pelota/Pelota.obj");
 	Model Sombra((char*)"Models/Sombra/Sombra.obj");
 	Model Perro((char*)"Models/Mascotas/RedDog.obj");
+	Model DescansoRojo((char*)"Models/Descanso/DescansoRojo.obj");
+    Model DescansoAzul((char*)"Models/Descanso/DescansoAzul.obj");
 
 	// Modelos para Linea y Corredor en la zona de Calentamiento
 	Model barraSeparadora((char*)"Models/Red/Postes.obj");
@@ -885,7 +941,7 @@ int main()
 	memset(cur, 0, sizeof(cur));
 	PoseListo(estadoVendedor);
 
-	std::cout << "\n=== TENIS 3D ===  Controles: W A S D + mouse (camara libre) | 1-5 camaras | C cambia vista | E jugar punto | Q automatico"
+	std::cout << "\n=== TENIS 3D ===  Controles: W A S D + mouse (camara libre) | 1-6 camaras | C cambia vista | E jugar punto | Q automatico"
 		<< " | J/K punto a jugador 1/2 | M pausar corredor calentamiento | L reflectores | N dia/noche | T superficie | B ola | O ovacion | R reiniciar | ESC salir\n" << std::endl;
 
 
@@ -1019,30 +1075,34 @@ int main()
 
 #define DIBUJAR(shader, modelo, M) { (shader).setMat4("model", (M)); (modelo).Draw(shader); }
 		glm::mat4 I(1.0f);
+		auto DibujarEscena = [&](Shader& sh)
+{
 
 		// ----- cancha, piso, vallas, red -----
-		lightingShader.setFloat("specStrength", 0.04f);
-		DIBUJAR(lightingShader, *Cancha[superficie], I);
-		DIBUJAR(lightingShader, Piso, I);
-		lightingShader.setFloat("specStrength", 0.15f);
+		sh.setFloat("specStrength", 0.04f);
+		DIBUJAR(sh, *Cancha[superficie], I);
+		DIBUJAR(sh, Piso, I);
+		sh.setFloat("specStrength", 0.15f);
 		for (int i = 0; i < 10; i++)
 		{
 			float z = -18.0f + 4.0f * i;
-			DIBUJAR(lightingShader, *Vallas[i % 3], Tr(-PISO_HX + 0.125f, 0.0f, z) * Ry(90.0f));
-			DIBUJAR(lightingShader, *Vallas[(i + 1) % 3], Tr(PISO_HX - 0.125f, 0.0f, z) * Ry(-90.0f));
+			DIBUJAR(sh, *Vallas[i % 3], Tr(-PISO_HX + 0.125f, 0.0f, z) * Ry(90.0f));
+			DIBUJAR(sh, *Vallas[(i + 1) % 3], Tr(PISO_HX - 0.125f, 0.0f, z) * Ry(-90.0f));
 		}
 		for (int i = 0; i < 5; i++)
 		{
 			float x = -8.0f + 4.0f * i;
-			DIBUJAR(lightingShader, *Vallas[(i + 2) % 3], Tr(x, 0.0f, PISO_HZ - 0.125f) * Ry(180.0f));
-			if (i != 2) DIBUJAR(lightingShader, *Vallas[i % 3], Tr(x, 0.0f, -PISO_HZ + 0.125f));
+			DIBUJAR(sh, *Vallas[(i + 2) % 3], Tr(x, 0.0f, PISO_HZ - 0.125f) * Ry(180.0f));
+			if (i != 2) DIBUJAR(sh, *Vallas[i % 3], Tr(x, 0.0f, -PISO_HZ + 0.125f));
 		}
-		DIBUJAR(lightingShader, Postes, I);
-		DIBUJAR(lightingShader, Tunel, Tr(0.0f, 0.0f, TUNEL_Z) * Ry(180.0f));
+		DIBUJAR(sh, Postes, I);
+		DIBUJAR(sh, Tunel, Tr(0.0f, 0.0f, TUNEL_Z) * Ry(180.0f));
 
 		// ----- silla del juez y el juez -----
 		glm::mat4 sillaM = Tr(SILLA_X, 0.0f, 0.0f) * Ry(-90.0f);
-		DIBUJAR(lightingShader, SillaJuez, sillaM);
+		DIBUJAR(sh, SillaJuez, sillaM);
+		DIBUJAR(sh, DescansoRojo, Tr(7.6f, 0.0f,  11.0f) * Ry(-90.0f));
+		DIBUJAR(sh, DescansoAzul, Tr(7.6f, 0.0f, -11.0f) * Ry(-90.0f));
 		{
 			glm::vec3 pel = pelotaVisible ? pelotaMundo : glm::vec3(0.0f, 1.0f, 0.0f);
 			float objetivo = glm::degrees(atan2f(pel.x - SILLA_X, pel.z)) + 90.0f;
@@ -1051,18 +1111,18 @@ int main()
 			if (objetivo > 70.0f) objetivo = 70.0f; if (objetivo < -70.0f) objetivo = -70.0f;
 			juezCabeza += (objetivo - juezCabeza) * 0.1f;
 			glm::mat4 cadera = Tr(SILLA_X, 2.49f, 0.0f) * Ry(-90.0f);
-			DIBUJAR(lightingShader, CuerpoJuez, cadera);
-			DIBUJAR(lightingShader, CabezaJuez, cadera * Tr(0.0f, 0.68f, 0.0f) * Ry(-juezCabeza));
+			DIBUJAR(sh, CuerpoJuez, cadera);
+			DIBUJAR(sh, CabezaJuez, cadera * Tr(0.0f, 0.68f, 0.0f) * Ry(-juezCabeza));
 			float anuncia = pulsoMarcador > 0.0f ? 55.0f * (pulsoMarcador > 0.5f ? 1.0f : pulsoMarcador * 2.0f) : 0.0f;
-			DIBUJAR(lightingShader, BrazoJuez, cadera * Tr(-0.205f, 0.50f, 0.0f) * Rx(-(20.0f + anuncia)));
-			DIBUJAR(lightingShader, BrazoJuez, cadera * Tr(0.205f, 0.50f, 0.0f) * Rx(-20.0f));
+			DIBUJAR(sh, BrazoJuez, cadera * Tr(-0.205f, 0.50f, 0.0f) * Rx(-(20.0f + anuncia)));
+			DIBUJAR(sh, BrazoJuez, cadera * Tr(0.205f, 0.50f, 0.0f) * Rx(-20.0f));
 		}
 
 		// ----- ZONA DE CALENTAMIENTO (Línea + Persona corriendo de lado a lado) -----
 		glBindVertexArray(cuadroVAO);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, texLineaBlanca);
-		lightingShader.setMat4("model", Tr(X_LINEA_DIVISORIA, 0.026f, 0.0f) * Rx(-90.0f) * glm::scale(glm::mat4(1.0f), glm::vec3(0.18f, 32.0f, 1.0f)));
+		sh.setMat4("model", Tr(X_LINEA_DIVISORIA, 0.026f, 0.0f) * Rx(-90.0f) * glm::scale(glm::mat4(1.0f), glm::vec3(0.18f, 32.0f, 1.0f)));
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		glBindVertexArray(0);
 
@@ -1094,82 +1154,81 @@ int main()
 
 		MatJug mc;
 		CalcularJugador(estadoCorredor, 0.96f, mc);
-		DIBUJAR(lightingShader, *JugAzul.torso, mc.torso);
-		DIBUJAR(lightingShader, *JugAzul.cabeza, mc.cabeza);
-		DIBUJAR(lightingShader, *JugAzul.brazo, mc.brazoD);
-		DIBUJAR(lightingShader, *JugAzul.antebrazo, mc.antD);
-		DIBUJAR(lightingShader, *JugAzul.brazo, mc.brazoI);
-		DIBUJAR(lightingShader, *JugAzul.antebrazo, mc.antI);
+		DIBUJAR(sh, *JugAzul.torso, mc.torso);
+		DIBUJAR(sh, *JugAzul.cabeza, mc.cabeza);
+		DIBUJAR(sh, *JugAzul.brazo, mc.brazoD);
+		DIBUJAR(sh, *JugAzul.antebrazo, mc.antD);
+		DIBUJAR(sh, *JugAzul.brazo, mc.brazoI);
+		DIBUJAR(sh, *JugAzul.antebrazo, mc.antI);
+		
 		for (int s = 0; s < 2; s++)
 		{
-			DIBUJAR(lightingShader, *JugAzul.muslo, mc.muslo[s]);
-			DIBUJAR(lightingShader, *JugAzul.pierna, mc.pierna[s]);
-			DIBUJAR(lightingShader, *JugAzul.pie, mc.pie[s]);
-			// ----- ANIMACION Y RENDERIZADO DEL VENDEDOR DE BEBIDAS -----
-			for (int j = 0; j < J_COUNT; j++) estadoVendedor[j] = 0.0f;
-			estadoVendedor[J_POSX] = X_CARRIL_VENDEDOR;
-			estadoVendedor[J_POSZ] = vendedorZ;
-			estadoVendedor[J_ROT] = vendedorRotY;
-			estadoVendedor[J_JUMP] = fabsf(sinf(cicloVendedor)) * 0.03f; // Salto suave al caminar
-			estadoVendedor[J_LEAN] = 3.0f;
-			estadoVendedor[J_TORSO_PITCH] = 2.0f;
-			estadoVendedor[J_TORSO_YAW] = sinf(cicloVendedor) * 6.0f;
+			DIBUJAR(sh, *JugAzul.muslo, mc.muslo[s]);
+			DIBUJAR(sh, *JugAzul.pierna, mc.pierna[s]);
+			DIBUJAR(sh, *JugAzul.pie, mc.pie[s]);
+		} // <-- CERRAR AQUI EL CICLO DE LAS PIERNAS DEL CORREDOR
 
-			// Caminata suave (piernas)
-			for (int s = 0; s < 2; s++)
-			{
-				float fase = cicloVendedor + (s == 0 ? 0.0f : 3.14159f);
-				float c = cosf(fase); if (c < 0.0f) c = 0.0f;
-				estadoVendedor[s == 0 ? J_HIP_R : J_HIP_L] = 22.0f * sinf(fase) + 5.0f;
-				estadoVendedor[s == 0 ? J_KNEE_R : J_KNEE_L] = 10.0f + 35.0f * powf(c, 1.3f);
-			}
+		// ----- ANIMACION Y RENDERIZADO DEL VENDEDOR DE BEBIDAS -----
+		for (int j = 0; j < J_COUNT; j++) estadoVendedor[j] = 0.0f;
+		estadoVendedor[J_POSX] = X_CARRIL_VENDEDOR;
+		estadoVendedor[J_POSZ] = vendedorZ;
+		estadoVendedor[J_ROT] = vendedorRotY;
+		estadoVendedor[J_JUMP] = fabsf(sinf(cicloVendedor)) * 0.03f;
+		estadoVendedor[J_LEAN] = 3.0f;
+		estadoVendedor[J_TORSO_PITCH] = 2.0f;
+		estadoVendedor[J_TORSO_YAW] = sinf(cicloVendedor) * 6.0f;
 
-			// Brazo Izquierdo (balanceo natural)
-			estadoVendedor[J_SHL_PITCH] = 25.0f * sinf(cicloVendedor);
-			estadoVendedor[J_ELB_L] = 15.0f;
-
-			// Brazo Derecho (Doblado a 90 grados sosteniendo la bandeja)
-			estadoVendedor[J_SHR_PITCH] = 80.0f;
-			estadoVendedor[J_ELB_R] = 90.0f;
-			estadoVendedor[J_SHR_ROLL] = 10.0f;
-			estadoVendedor[J_WRIST_R] = 20.0f;
-
-			MatJug mv;
-			CalcularJugador(estadoVendedor, 0.95f, mv);
-
-			// Dibujar modelo del Vendedor
-			DIBUJAR(lightingShader, *ModeloVendedor.torso, mv.torso);
-			DIBUJAR(lightingShader, *ModeloVendedor.cabeza, mv.cabeza);
-			DIBUJAR(lightingShader, *ModeloVendedor.brazo, mv.brazoD);
-			DIBUJAR(lightingShader, *ModeloVendedor.antebrazo, mv.antD);
-			DIBUJAR(lightingShader, *ModeloVendedor.brazo, mv.brazoI);
-			DIBUJAR(lightingShader, *ModeloVendedor.antebrazo, mv.antI);
-			for (int s = 0; s < 2; s++)
-			{
-				DIBUJAR(lightingShader, *ModeloVendedor.muslo, mv.muslo[s]);
-				DIBUJAR(lightingShader, *ModeloVendedor.pierna, mv.pierna[s]);
-				DIBUJAR(lightingShader, *ModeloVendedor.pie, mv.pie[s]);
-			}
-			// ----- Dibujar el letrero en la mano -----
-// Reactivamos las texturas y establecemos el color base en blanco neutro para no alterar los colores del .jpg
-			glUniform1i(glGetUniformLocation(lightingShader.Program, "useTexture"), 1);
-			glUniform4fv(glGetUniformLocation(lightingShader.Program, "objectColor"), 1, glm::value_ptr(glm::vec4(1.0f)));
-
-			glBindVertexArray(cuadroVAO); // Usamos el plano 2D ya existente
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, texLetrero); // Usamos la textura cargada en el Paso 1
-
-			// Posicionamos el letrero anclado al antebrazo derecho (antD)
-			glm::mat4 matLetrero = mv.antD
-				* Tr(0.0f, -0.40f, 0.25f)       // Desplazamiento hacia la mano
-				* Rx(90.0f) * Rz(-90.0f)        // Rotación para orientarlo hacia el frente/pasillo
-				* glm::scale(glm::mat4(1.0f), glm::vec3(1.2f, 0.8f, 1.0f)); // Escala (Ancho x Alto). Invierte si el letrero es vertical.
-
-			lightingShader.setMat4("model", matLetrero);
-			glDrawArrays(GL_TRIANGLES, 0, 6);
-			glBindVertexArray(0);
-
+		for (int s = 0; s < 2; s++)
+		{
+			float fase = cicloVendedor + (s == 0 ? 0.0f : 3.14159f);
+			float c = cosf(fase); if (c < 0.0f) c = 0.0f;
+			estadoVendedor[s == 0 ? J_HIP_R : J_HIP_L] = 22.0f * sinf(fase) + 5.0f;
+			estadoVendedor[s == 0 ? J_KNEE_R : J_KNEE_L] = 10.0f + 35.0f * powf(c, 1.3f);
 		}
+
+		estadoVendedor[J_SHL_PITCH] = 25.0f * sinf(cicloVendedor);
+		estadoVendedor[J_ELB_L] = 15.0f;
+
+		estadoVendedor[J_SHR_PITCH] = 80.0f;
+		estadoVendedor[J_ELB_R] = 90.0f;
+		estadoVendedor[J_SHR_ROLL] = 10.0f;
+		estadoVendedor[J_WRIST_R] = 20.0f;
+
+		MatJug mv;
+		CalcularJugador(estadoVendedor, 0.95f, mv);
+
+		DIBUJAR(sh, *ModeloVendedor.torso, mv.torso);
+		DIBUJAR(sh, *ModeloVendedor.cabeza, mv.cabeza);
+		DIBUJAR(sh, *ModeloVendedor.brazo, mv.brazoD);
+		DIBUJAR(sh, *ModeloVendedor.antebrazo, mv.antD);
+		DIBUJAR(sh, *ModeloVendedor.brazo, mv.brazoI);
+		DIBUJAR(sh, *ModeloVendedor.antebrazo, mv.antI);
+		for (int s = 0; s < 2; s++)
+		{
+			DIBUJAR(sh, *ModeloVendedor.muslo, mv.muslo[s]);
+			DIBUJAR(sh, *ModeloVendedor.pierna, mv.pierna[s]);
+			DIBUJAR(sh, *ModeloVendedor.pie, mv.pie[s]);
+		}
+
+		glUniform1i(glGetUniformLocation(sh.Program, "useTexture"), 1);
+		glUniform4fv(glGetUniformLocation(sh.Program, "objectColor"), 1, glm::value_ptr(glm::vec4(1.0f)));
+
+		glBindVertexArray(cuadroVAO);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, texLetrero);
+
+		glm::mat4 matLetrero = mv.antD
+			* Tr(0.0f, -0.40f, 0.25f)
+			* Rx(90.0f) * Rz(-90.0f)
+			* glm::scale(glm::mat4(1.0f), glm::vec3(1.2f, 0.8f, 1.0f));
+
+		sh.setMat4("model", matLetrero);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glBindVertexArray(0);
+
+
+
+		
 
 // ----- GLOBOS DE CELEBRACION (Escalacion Volumetrica y Vuelo) -----
 		if (globosActivos)
@@ -1199,20 +1258,20 @@ int main()
 					* glm::scale(glm::mat4(1.0f), glm::vec3(10.5f * factorEscala, 13.5f * factorEscala, 10.5f * factorEscala));
 
 				// 1. Dibujar el globo usando color solido desde el shader (sin tocar Mesh.h privado)
-				glUniform1i(glGetUniformLocation(lightingShader.Program, "useTexture"), 0);
+				glUniform1i(glGetUniformLocation(sh.Program, "useTexture"), 0);
 				glm::vec4 colorGlobo = (colorGloboJugador == 0) ? glm::vec4(0.92f, 0.14f, 0.18f, 1.0f) : glm::vec4(0.12f, 0.41f, 0.96f, 1.0f);
-				glUniform4fv(glGetUniformLocation(lightingShader.Program, "objectColor"), 1, glm::value_ptr(colorGlobo));
+				glUniform4fv(glGetUniformLocation(sh.Program, "objectColor"), 1, glm::value_ptr(colorGlobo));
 
-				DIBUJAR(lightingShader, Pelota, matGlobo);
+				DIBUJAR(sh, Pelota, matGlobo);
 
-				glUniform1i(glGetUniformLocation(lightingShader.Program, "useTexture"), 1); // Reactivar texturas
+				glUniform1i(glGetUniformLocation(sh.Program, "useTexture"), 1); // Reactivar texturas
 
 				// 2. Cordon colgando del globo
 				glBindVertexArray(cuadroVAO);
 				glBindTexture(GL_TEXTURE_2D, texLineaBlanca);
 				glm::mat4 matCordon = Tr(posActual.x, posActual.y - 0.65f * factorEscala, posActual.z)
 					* glm::scale(glm::mat4(1.0f), glm::vec3(0.03f, 0.65f * factorEscala, 0.03f));
-				lightingShader.setMat4("model", matCordon);
+				sh.setMat4("model", matCordon);
 				glDrawArrays(GL_TRIANGLES, 0, 6);
 			}
 			glBindVertexArray(0);
@@ -1223,14 +1282,14 @@ int main()
 		for (int i = 0; i < 4; i++)
 		{
 			float sx = (i % 2 == 0) ? -1.0f : 1.0f, sz = (i < 2) ? -1.0f : 1.0f;
-			DIBUJAR(lightingShader, Torre, Tr(sx * TORRE_X, 0.0f, sz * TORRE_Z));
+			DIBUJAR(sh, Torre, Tr(sx * TORRE_X, 0.0f, sz * TORRE_Z));
 		}
 
 		// ----- gradas y publico -----
 		for (size_t m = 0; m < modulos.size(); m++)
 		{
 			glm::mat4 base = Tr(modulos[m].origen.x, 0.0f, modulos[m].origen.z) * Ry(modulos[m].yaw);
-			DIBUJAR(lightingShader, modulos[m].tipo == 0 ? GradaAzul : GradaRoja, base);
+			DIBUJAR(sh, modulos[m].tipo == 0 ? GradaAzul : GradaRoja, base);
 			float ang = atan2f(modulos[m].origen.z, modulos[m].origen.x);
 			for (int r = 0; r < GR_FILAS; r++)
 			{
@@ -1238,7 +1297,7 @@ int main()
 				float salto = 0.0f;
 				if (festejo > 0.0f) salto += festejo * fabsf(sinf(tiempo * 8.0f + r * 0.9f + m)) * 0.10f;
 				if (olaOn > 0.01f) { float w = sinf(ang * 3.0f - tiempo * 3.0f + r * 0.05f); if (w > 0.5f) salto += olaOn * (w - 0.5f) * 0.8f; }
-				DIBUJAR(lightingShader, *Filas[(m + r) % 4], base * Tr(0.0f, alto + salto, r * GR_PROF + 0.58f));
+				DIBUJAR(sh, *Filas[(m + r) % 4], base * Tr(0.0f, alto + salto, r * GR_PROF + 0.58f));
 			}
 		}
 
@@ -1267,19 +1326,19 @@ int main()
 			}
 			CalcularJugador(v, 1.0f, mj);
 			bool ocultarCabeza = (camModo == 5 && seguido == p);
-			DIBUJAR(lightingShader, *jug[p]->torso, mj.torso);
-			if (!ocultarCabeza) DIBUJAR(lightingShader, *jug[p]->cabeza, mj.cabeza);
-			DIBUJAR(lightingShader, *jug[p]->brazo, mj.brazoD);
-			DIBUJAR(lightingShader, *jug[p]->antebrazo, mj.antD);
-			DIBUJAR(lightingShader, *jug[p]->brazo, mj.brazoI);
-			DIBUJAR(lightingShader, *jug[p]->antebrazo, mj.antI);
+			DIBUJAR(sh, *jug[p]->torso, mj.torso);
+			if (!ocultarCabeza) DIBUJAR(sh, *jug[p]->cabeza, mj.cabeza);
+			DIBUJAR(sh, *jug[p]->brazo, mj.brazoD);
+			DIBUJAR(sh, *jug[p]->antebrazo, mj.antD);
+			DIBUJAR(sh, *jug[p]->brazo, mj.brazoI);
+			DIBUJAR(sh, *jug[p]->antebrazo, mj.antI);
 			for (int s = 0; s < 2; s++)
 			{
-				DIBUJAR(lightingShader, *jug[p]->muslo, mj.muslo[s]);
-				DIBUJAR(lightingShader, *jug[p]->pierna, mj.pierna[s]);
-				DIBUJAR(lightingShader, *jug[p]->pie, mj.pie[s]);
+				DIBUJAR(sh, *jug[p]->muslo, mj.muslo[s]);
+				DIBUJAR(sh, *jug[p]->pierna, mj.pierna[s]);
+				DIBUJAR(sh, *jug[p]->pie, mj.pie[s]);
 			}
-			if (!ocultarCabeza) DIBUJAR(lightingShader, Raqueta, mj.raqueta);
+			if (!ocultarCabeza) DIBUJAR(sh, Raqueta, mj.raqueta);
 		}
 		// recogepelotas: agachados en las esquinas, miran la pelota
 		for (int k = 0; k < 2; k++)
@@ -1294,22 +1353,22 @@ int main()
 			v[J_HEAD_YAW] = objetivo;
 			v[J_KNEE_R] += sinf(tiempo * 2.0f + k) * 2.0f; v[J_KNEE_L] = v[J_KNEE_R];
 			CalcularJugador(v, 0.76f, mj);
-			DIBUJAR(lightingShader, *Ninos.torso, mj.torso);
-			DIBUJAR(lightingShader, *Ninos.cabeza, mj.cabeza);
-			DIBUJAR(lightingShader, *Ninos.brazo, mj.brazoD);
-			DIBUJAR(lightingShader, *Ninos.antebrazo, mj.antD);
-			DIBUJAR(lightingShader, *Ninos.brazo, mj.brazoI);
-			DIBUJAR(lightingShader, *Ninos.antebrazo, mj.antI);
+			DIBUJAR(sh, *Ninos.torso, mj.torso);
+			DIBUJAR(sh, *Ninos.cabeza, mj.cabeza);
+			DIBUJAR(sh, *Ninos.brazo, mj.brazoD);
+			DIBUJAR(sh, *Ninos.antebrazo, mj.antD);
+			DIBUJAR(sh, *Ninos.brazo, mj.brazoI);
+			DIBUJAR(sh, *Ninos.antebrazo, mj.antI);
 			for (int s = 0; s < 2; s++)
 			{
-				DIBUJAR(lightingShader, *Ninos.muslo, mj.muslo[s]);
-				DIBUJAR(lightingShader, *Ninos.pierna, mj.pierna[s]);
-				DIBUJAR(lightingShader, *Ninos.pie, mj.pie[s]);
+				DIBUJAR(sh, *Ninos.muslo, mj.muslo[s]);
+				DIBUJAR(sh, *Ninos.pierna, mj.pierna[s]);
+				DIBUJAR(sh, *Ninos.pie, mj.pie[s]);
 			}
 		}
 
 		// ----- mascota: perro vigila tunel (Gato eliminado) -----
-		DIBUJAR(lightingShader, Perro, Tr(3.9f, 0.38f, -17.6f) * Ry(180.0f) * Esc(1.0f));
+		DIBUJAR(sh, Perro, Tr(3.9f, 0.38f, -17.6f) * Ry(180.0f) * Esc(1.0f));
 
 		// ----- pelota (dibujada un poco mas grande para que se vea) -----
 		if (pelotaVisible)
@@ -1322,14 +1381,37 @@ int main()
 				MatJug mm; CalcularJugador(v, 1.0f, mm);
 				pb = glm::vec3(mm.antI * glm::vec4(0.0f, -0.32f, 0.02f, 1.0f));
 			}
-			DIBUJAR(lightingShader, Pelota, Tr(pb.x, pb.y, pb.z) * Ry(tiempo * 300.0f) * Rx(tiempo * 200.0f) * Esc(1.8f) * Tr(0.0f, -0.0335f, 0.0f));
+			DIBUJAR(sh, Pelota, Tr(pb.x, pb.y, pb.z) * Ry(tiempo * 300.0f) * Rx(tiempo * 200.0f) * Esc(1.8f) * Tr(0.0f, -0.0335f, 0.0f));
 		}
 
 		// ----- red (transparente) y sombras redondas -----
+		};
+
+// ---- Pasada 1: mapa de profundidad desde el sol ----
+glm::vec3 ldir = glm::normalize(glm::vec3(-0.35f, -1.0f, -0.45f));
+glm::mat4 lightSpace = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, 1.0f, 130.0f)
+                     * glm::lookAt(-ldir * 60.0f, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+glViewport(0, 0, SHADOW_W, SHADOW_H);
+glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+glClear(GL_DEPTH_BUFFER_BIT);
+depthShader.Use();
+depthShader.setMat4("lightSpaceMatrix", lightSpace);
+DibujarEscena(depthShader);
+glBindFramebuffer(GL_FRAMEBUFFER, 0);
+glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+// ---- Pasada 2: escena normal con sombras ----
+lightingShader.Use();
+lightingShader.setMat4("lightSpaceMatrix", lightSpace);
+glActiveTexture(GL_TEXTURE5);
+glBindTexture(GL_TEXTURE_2D, depthMap);
+lightingShader.setInt("shadowMap", 5);
+glActiveTexture(GL_TEXTURE0);
+DibujarEscena(lightingShader);
+
 		DIBUJAR(lightingShader, Red, I);
 		glDepthMask(GL_FALSE);
-		for (int p = 0; p < 2; p++)
-			DIBUJAR(lightingShader, Sombra, Tr(estado[p][J_POSX], 0.03f, estado[p][J_POSZ]) * glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f)));
+		
 		if (pelotaVisible)
 		{
 			float s = 0.5f + 0.3f / (1.0f + pelotaMundo.y);
@@ -1418,7 +1500,21 @@ int main()
 // ===========================================================================================
 void DoMovement()
 {
-	if (camModo != 1) return;
+	   if (camModo == 6)
+	   {
+		   if (keys[GLFW_KEY_W]) camCaminar.ProcessKeyboard(FORWARD, deltaTime);
+		   if (keys[GLFW_KEY_S]) camCaminar.ProcessKeyboard(BACKWARD, deltaTime);
+		   if (keys[GLFW_KEY_A]) camCaminar.ProcessKeyboard(LEFT, deltaTime);
+		   if (keys[GLFW_KEY_D]) camCaminar.ProcessKeyboard(RIGHT, deltaTime);
+		   glm::vec3 p = camCaminar.GetPosition();
+		   p.x = glm::clamp(p.x, -20.5f, 20.5f);
+		   p.z = glm::clamp(p.z, -28.5f, 28.5f);
+		   float objetivo = 1.7f + AlturaSuelo(p.x, p.z);
+		   p.y += (objetivo - p.y) * 0.2f;
+		   camCaminar.SetPosition(p);
+		   return;
+	   }
+	   if (camModo != 1) return;
 	if (keys[GLFW_KEY_W]) camera.ProcessKeyboard(FORWARD, deltaTime);
 	if (keys[GLFW_KEY_S]) camera.ProcessKeyboard(BACKWARD, deltaTime);
 	if (keys[GLFW_KEY_A]) camera.ProcessKeyboard(LEFT, deltaTime);
@@ -1443,6 +1539,8 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 	case GLFW_KEY_3: camModo = 3; break;
 	case GLFW_KEY_4: camModo = 4; break;
 	case GLFW_KEY_5: camModo = 5; break;
+	case GLFW_KEY_6: camModo = 6; break;
+	
 	case GLFW_KEY_C: tvPosicion = 1 - tvPosicion; seguido = 1 - seguido; break;
 	case GLFW_KEY_E: IniciarPunto(); break;
 	case GLFW_KEY_Q: autoJuego = !autoJuego; break;
@@ -1455,6 +1553,7 @@ void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mode
 	case GLFW_KEY_T: superficie = (superficie + 1) % 3; break;
 	case GLFW_KEY_B: olaActiva = !olaActiva; break;
 	case GLFW_KEY_O: festejo = 1.0f; break;
+	case GLFW_KEY_V: Sonar("Sonidos/silbato.wav"); break;
 	default: break;
 	}
 }
@@ -1472,4 +1571,5 @@ void MouseCallback(GLFWwindow* window, double xPos, double yPos)
 	lastX = xPos;
 	lastY = yPos;
 	if (camModo == 1) camera.ProcessMouseMovement(xOffset, yOffset);
+	if (camModo == 6) camCaminar.ProcessMouseMovement(xOffset, yOffset);
 }
