@@ -41,6 +41,9 @@ public:
 		}
 	}
 
+	// true si no se pudo cargar ninguna malla (archivo faltante)
+	bool Vacio() const { return meshes.empty(); }
+
 private:
 	/*  Model Data  */
 	vector<Mesh> meshes;
