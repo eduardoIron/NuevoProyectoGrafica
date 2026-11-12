@@ -58,6 +58,9 @@ const float SILLA_X = 7.6f;
 const float TORRE_X = 22.0f, TORRE_Z = 26.0f, TORRE_H = 31.0f;
 const float MARCADOR_Z = 31.0f, MARCADOR_Y = 9.6f;
 const float TUNEL_Z = -19.0f;
+const float WZ_INT = 35.0f;                       // cara interior de los muros norte / sur
+const float X_ENTRADA = 11.3f;                    // centro de la puerta de entrada (muro sur)
+const float PANTALLA_X = 24.6f, PANTALLA_Y = 7.3f; // pantallas gigantes en los muros este / oeste
 const float GR_PROF = 0.85f, GR_ALZA = 0.42f;
 const int GR_FILAS = 10;
 
@@ -77,7 +80,7 @@ float AlturaSuelo(float x, float z)
 
 
 // ============================================================================
-// VARIABLES PARA LA ZONA DE CALENTAMIENTO
+// VARIABLES PARA LA ZONA DE CALENTAMIENTO (PERSONA CORRIENDO)
 // ============================================================================
 bool animCalentamiento = true;
 float corredorZ = -8.0f;
@@ -88,13 +91,13 @@ const float X_LINEA_DIVISORIA = -6.7f;
 const float X_CARRIL_CORREDOR = -8.3f;
 
 // ============================================================================
-// VARIABLES Vendedor
+// VARIABLES PARA EL VENDEDOR DE BEBIDAS
 // ============================================================================
 float vendedorZ = -14.0f;
 float vendedorDir = 1.0f;
 float vendedorRotY = 0.0f;
 float cicloVendedor = 0.0f;
-const float X_CARRIL_VENDEDOR = -10.5f; 
+const float X_CARRIL_VENDEDOR = -10.5f; // Posición exacta entre las gradas (-12.0) y las vallas (-8.0)
 
 
 // ===========================================================================================
@@ -175,7 +178,7 @@ void SumarPunto(int p)
 }
 
 // ===========================================================================================
-//  PERSONAJES POR PARTES 
+//  PERSONAJES POR PARTES (modelado jerarquico)
 // ===========================================================================================
 struct PartesJugador { Model* torso, * cabeza, * brazo, * antebrazo, * muslo, * pierna, * pie; };
 
@@ -193,7 +196,7 @@ PartesJugador CargarJugador(const char* carpeta)
 	return p;
 }
 
-
+// Solo 4 articulaciones: ambos brazos y ambas piernas (giran como piezas rigidas, sin codos ni rodillas)
 enum {
 	J_POSX, J_POSZ, J_ROT,
 	J_SHR_PITCH, J_SHL_PITCH,   // brazo derecho (raqueta) e izquierdo
@@ -213,18 +216,18 @@ struct MatJug {
 
 void CalcularJugador(const float* v, float esc, MatJug& m)
 {
-	// altura de la cadera
+	// altura de la cadera: la pierna mas baja toca el piso
 	float hr = 0.04f + 0.87f * cosf(glm::radians(v[J_HIP_R])) + 0.0775f;
 	float hl = 0.04f + 0.87f * cosf(glm::radians(v[J_HIP_L])) + 0.0775f;
 	float HP = hr > hl ? hr : hl;
 
 	glm::mat4 base = Tr(v[J_POSX], 0.0f, v[J_POSZ]) * Ry(v[J_ROT]) * Esc(esc);
 	glm::mat4 pelvis = base * Tr(0.0f, HP, 0.0f);
-	m.torso = pelvis;                                   // torso 
-	m.cabeza = m.torso * Tr(0.0f, 0.68f, 0.0f);         // cabeza 
+	m.torso = pelvis;                                   // torso rigido
+	m.cabeza = m.torso * Tr(0.0f, 0.68f, 0.0f);         // cabeza fija
 
 	m.brazoD = m.torso * Tr(-0.205f, 0.50f, 0.0f) * Rx(-v[J_SHR_PITCH]);
-	m.antD = m.brazoD * Tr(0.0f, -0.29f, 0.0f);         // antebrazo 
+	m.antD = m.brazoD * Tr(0.0f, -0.29f, 0.0f);         // antebrazo siempre recto
 	m.raqueta = m.antD * Tr(0.0f, -0.32f, 0.0f) * Rx(180.0f) * Ry(90.0f);
 	m.brazoI = m.torso * Tr(0.205f, 0.50f, 0.0f) * Rx(-v[J_SHL_PITCH]);
 	m.antI = m.brazoI * Tr(0.0f, -0.29f, 0.0f);
@@ -233,8 +236,8 @@ void CalcularJugador(const float* v, float esc, MatJug& m)
 		float hip = s == 0 ? v[J_HIP_R] : v[J_HIP_L];
 		float x = s == 0 ? -0.095f : 0.095f;
 		m.muslo[s] = pelvis * Tr(x, -0.04f, 0.0f) * Rx(-hip);
-		m.pierna[s] = m.muslo[s] * Tr(0.0f, -0.44f, 0.0f);          // pierna 
-		m.pie[s] = m.pierna[s] * Tr(0.0f, -0.43f, 0.0f) * Rx(hip);  // pie 
+		m.pierna[s] = m.muslo[s] * Tr(0.0f, -0.44f, 0.0f);          // pierna recta
+		m.pie[s] = m.pierna[s] * Tr(0.0f, -0.43f, 0.0f) * Rx(hip);  // pie siempre plano
 	}
 }
 
@@ -315,6 +318,7 @@ void PelotaArco(int desde, int hasta, const glm::vec3& p0, const glm::vec3& p1, 
 void PonerPelota(int f, const glm::vec3& p) { PB(f)[0] = p.x; PB(f)[1] = p.y; PB(f)[2] = p.z; }
 float Aleatorio(float a, float b) { return a + (b - a) * (float)rand() / (float)RAND_MAX; }
 
+// Cada pose solo fija el angulo de los dos brazos y las dos piernas
 void Brazos(float* p, float der, float izq, float cadD = 0.0f, float cadI = 0.0f) {
 	p[J_SHR_PITCH] = der; p[J_SHL_PITCH] = izq; p[J_HIP_R] = cadD; p[J_HIP_L] = cadI;
 }
@@ -366,7 +370,7 @@ void CargarPunto(float sx) {
 	float hS = AlturaArco(C1, B1, 1.35f);
 	PelotaArco(fContacto, fB, C1, B1, hS);
 
-	// ---- Jugador se acomoda y devuelve la pelota ----
+	// ---- El receptor se acomoda y devuelve la pelota ----
 	glm::vec3 d = glm::normalize(glm::vec3(B1.x - C1.x, 0.0f, B1.z - C1.z));
 	glm::vec3 C2t(B1.x + d.x * 6.0f, 1.0f, B1.z + d.z * 6.0f);
 	float tmp[J_COUNT]; PoseDerecha(tmp, 2); tmp[J_POSX] = 0.0f; tmp[J_POSZ] = 0.0f; tmp[J_ROT] = 0.0f;
@@ -391,7 +395,7 @@ void CargarPunto(float sx) {
 	int f14 = NuevoFrame(20);                                   // regreso a posicion lista
 	PoseDerecha(PR(f14), 0); PR(f14)[J_POSX] = px; PR(f14)[J_POSZ] = pz; PR(f14)[J_ROT] = 0.0f;
 
-	// ---- Devolucion pelota ----
+	// ---- La devolucion bota del lado del que saco y llega a la pared del fondo ----
 	glm::vec3 B2(sgn * Aleatorio(0.6f, 2.2f), 0.034f, Aleatorio(8.0f, 9.0f));
 	int f15 = NuevoFrame(22);
 	PelotaArco(f12, f15, C2, B2, AlturaArco(C2, B2, 1.2f));
@@ -658,7 +662,7 @@ int main()
 	Model DescansoRojo((char*)"Models/Descanso/DescansoRojo.obj");
     Model DescansoAzul((char*)"Models/Descanso/DescansoAzul.obj");
 
-	
+	// Modelos para Linea y Corredor en la zona de Calentamiento
 	Model barraSeparadora((char*)"Models/Red/Postes.obj");
 	Model corredorTorso((char*)"Models/Jugador/Recogepelotas/Torso.obj");
 	Model corredorCabeza((char*)"Models/Jugador/Recogepelotas/Cabeza.obj");
@@ -668,9 +672,27 @@ int main()
 	Model corredorPierna((char*)"Models/Jugador/Recogepelotas/Pierna.obj");
 	Model corredorPie((char*)"Models/Jugador/Recogepelotas/Pie.obj");
 
-	
+	// ---------- Modelos que antes se dibujaban con un cuadrado por codigo ----------
 	Model LineaCalentamiento((char*)"Models/LineaCalentamiento/LineaCalentamiento.obj");
 	Model BandejaVendedor((char*)"Models/Bandeja/Bandeja.obj");   // bandeja con cervezas
+
+	// ---------- Estadio cerrado: muros, techo, pantallas gigantes y entrada ----------
+	Model Muros((char*)"Models/Estadio/Muros.obj");
+	Model Cubierta((char*)"Models/Estadio/Cubierta.obj");
+	Model Plaza((char*)"Models/Estadio/Plaza.obj");
+	Model PantallaMarco((char*)"Models/Estadio/PantallaMarco.obj");
+	Model* PantallaImg[3] = { new Model((char*)"Models/Estadio/Pantalla1.obj"),
+	                          new Model((char*)"Models/Estadio/Pantalla2.obj"),
+	                          new Model((char*)"Models/Estadio/Pantalla3.obj") };
+	Model Entrada((char*)"Models/Estadio/Entrada.obj");
+	Model LetreroEntrada((char*)"Models/Estadio/LetreroEntrada.obj");
+	Model LetreroTaquilla((char*)"Models/Estadio/LetreroTaquilla.obj");
+	Model LetreroPuerta((char*)"Models/Estadio/LetreroPuerta.obj");
+	Model Torniquete((char*)"Models/Estadio/Torniquete.obj");
+	Model Barrera((char*)"Models/Estadio/Barrera.obj");
+	Model Farola((char*)"Models/Estadio/Farola.obj");
+	Model BannerA((char*)"Models/Estadio/BannerA.obj");
+	Model BannerB((char*)"Models/Estadio/BannerB.obj");
 	Model SaqueIcono((char*)"Models/Marcador/Digitos/Saque.obj");
 	Model* Digito[10];
 	for (int i = 0; i < 10; i++)
@@ -685,7 +707,7 @@ int main()
 	PartesJugador JugRojo = CargarJugador("Rojo");
 	PartesJugador JugAzul = CargarJugador("Azul");
 	PartesJugador Ninos = CargarJugador("Recogepelotas");
-	PartesJugador ModeloVendedor = CargarJugador("Vendedor"); 
+	PartesJugador ModeloVendedor = CargarJugador("Vendedor"); // Requiere la carpeta Models/Jugador/Vendedor
 
 
 	PartesJugador* jug[2] = { &JugRojo, &JugAzul };
@@ -702,7 +724,7 @@ int main()
 		-1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f,
 		-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f,
 		-1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, -1.0f, 1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f };
-	// ---------- Controles----------
+	// ---------- Franja de controles (imagen fija en la parte superior de la ventana) ----------
 	GLuint texControles = CargarTextura("images/Controles.png");
 	const float ASPECTO_CONTROLES = 168.0f / 1920.0f;          // alto / ancho de la imagen
 	GLuint hudVAO, hudVBO;
@@ -727,7 +749,7 @@ int main()
 	GLuint cubemapDia = CargarCubemap("dia");
 	GLuint cubemapNoche = CargarCubemap("noche");
 
-
+	// (La linea de calentamiento, los digitos del marcador ahora son modelos .obj)
 
 
 	// ---------- Gradas ----------
@@ -805,7 +827,7 @@ int main()
 		luzReflectores += ((reflectores ? 1.0f : 0.0f) - luzReflectores) * (deltaTime * 3.0f);
 		if (pulsoMarcador > 0.0f) pulsoMarcador -= deltaTime * 0.9f;
 
-		// Jugador en calentamiento
+		// Logica de la persona corriendo en la zona de calentamiento
 		if (animCalentamiento)
 		{
 			float velocidadCarrera = 4.2f;
@@ -825,8 +847,8 @@ int main()
 				corredorRotY = 0.0f;
 			}
 		}
-		// Vendedor movimiento
-		float velocidadVendedor = 1.6f; // Camina
+		// Logica del vendedor de bebidas
+		float velocidadVendedor = 1.6f; // Camina más lento que el corredor
 		vendedorZ += vendedorDir * velocidadVendedor * deltaTime;
 		cicloVendedor += deltaTime * 5.0f;
 
@@ -852,7 +874,7 @@ int main()
 			faseCamina[p] += velocidad[p] * deltaTime * 2.7f;
 		}
 
-		
+		// ---------- Render ----------
 		if (dia > 0.5f) glClearColor(0.55f, 0.72f, 0.92f, 1.0f); else glClearColor(0.02f, 0.03f, 0.08f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -895,7 +917,7 @@ int main()
 		lightingShader.setVec3("pointColor", 1.0f, 0.88f, 0.65f);
 
 #define DIBUJAR(shader, modelo, M) { (shader).setMat4("model", (M)); (modelo).Draw(shader); }
-		
+		// Lo que se mueve (personajes, pelota) no proyecta sombra: en el pase de sombras no se dibuja
 		bool soloSombra = false;
 #define DIBUJAR_MOV(shader, modelo, M) { if (!soloSombra) { (shader).setMat4("model", (M)); (modelo).Draw(shader); } }
 		glm::mat4 I(1.0f);
@@ -922,6 +944,36 @@ int main()
 		DIBUJAR(sh, Postes, I);
 		DIBUJAR(sh, Tunel, Tr(0.0f, 0.0f, TUNEL_Z) * Ry(180.0f));
 
+		// ----- recinto cerrado: muros, techo, explanadas y pantallas gigantes (marco) -----
+		DIBUJAR(sh, Muros, I);
+		DIBUJAR(sh, Cubierta, I);
+		DIBUJAR(sh, Plaza, I);
+		DIBUJAR(sh, PantallaMarco, Tr(-PANTALLA_X, PANTALLA_Y, 0.0f) * Ry(90.0f));
+		DIBUJAR(sh, PantallaMarco, Tr(PANTALLA_X, PANTALLA_Y, 0.0f) * Ry(-90.0f));
+		DIBUJAR(sh, BannerA, Tr(-15.0f, 7.5f, WZ_INT - 0.6f) * Ry(180.0f));
+		DIBUJAR(sh, BannerB, Tr(15.0f, 7.5f, WZ_INT - 0.6f) * Ry(180.0f));
+		DIBUJAR(sh, BannerB, Tr(-15.0f, 7.5f, -WZ_INT + 0.6f));
+		DIBUJAR(sh, BannerA, Tr(16.5f, 7.5f, -WZ_INT + 0.6f));
+
+		// ----- seccion de entrada (muro sur): portal, taquillas, torniquetes y exterior -----
+		{
+			glm::mat4 E = Tr(X_ENTRADA, 0.0f, -WZ_INT);
+			DIBUJAR(sh, Entrada, E);
+			DIBUJAR(sh, LetreroEntrada, Tr(X_ENTRADA, 6.6f, -WZ_INT - 1.52f) * Ry(180.0f));
+			DIBUJAR(sh, LetreroPuerta, Tr(X_ENTRADA, 5.6f, -WZ_INT + 0.62f));
+			for (int s = -1; s <= 1; s += 2)
+				DIBUJAR(sh, LetreroTaquilla, Tr(X_ENTRADA + s * 8.2f, 2.12f, -WZ_INT - 6.45f) * Ry(180.0f));
+			float tx[4] = { -2.25f, -0.75f, 0.75f, 2.25f };
+			for (int i = 0; i < 4; i++) DIBUJAR(sh, Torniquete, Tr(X_ENTRADA + tx[i], 0.0f, -WZ_INT - 0.3f));
+			for (int s = -1; s <= 1; s += 2)
+				for (int k = 0; k < 2; k++)
+					DIBUJAR(sh, Barrera, Tr(X_ENTRADA + s * 3.4f, 0.0f, -WZ_INT - 9.5f - 3.2f * k) * Ry(90.0f));
+			DIBUJAR(sh, Farola, Tr(-2.0f, 0.0f, -44.0f));
+			DIBUJAR(sh, Farola, Tr(24.0f, 0.0f, -44.0f) * Ry(180.0f));
+			DIBUJAR(sh, Farola, Tr(5.0f, 0.0f, -54.0f));
+			DIBUJAR(sh, Farola, Tr(18.0f, 0.0f, -54.0f) * Ry(180.0f));
+		}
+
 		// ----- silla del juez y el juez -----
 		glm::mat4 sillaM = Tr(SILLA_X, 0.0f, 0.0f) * Ry(-90.0f);
 		DIBUJAR(sh, SillaJuez, sillaM);
@@ -936,10 +988,10 @@ int main()
 			DIBUJAR_MOV(sh, BrazoJuez, cadera * Tr(0.205f, 0.50f, 0.0f) * Rx(-20.0f));
 		}
 
-		// ----- ZONA DE CALENTAMIENTO -----
+		// ----- ZONA DE CALENTAMIENTO (Línea + Persona corriendo de lado a lado) -----
 		DIBUJAR(sh, LineaCalentamiento, Tr(X_LINEA_DIVISORIA, 0.026f, 0.0f));
 
-		// Persona corriendo
+		// Articulando a la persona que corre
 		for (int j = 0; j < J_COUNT; j++) estadoCorredor[j] = 0.0f;
 		estadoCorredor[J_POSX] = X_CARRIL_CORREDOR;
 		estadoCorredor[J_POSZ] = corredorZ;
@@ -963,9 +1015,9 @@ int main()
 			DIBUJAR_MOV(sh, *JugAzul.muslo, mc.muslo[s]);
 			DIBUJAR_MOV(sh, *JugAzul.pierna, mc.pierna[s]);
 			DIBUJAR_MOV(sh, *JugAzul.pie, mc.pie[s]);
-		} // 
+		} // <-- CERRAR AQUI EL CICLO DE LAS PIERNAS DEL CORREDOR
 
-		// ----- VENDEDOR -----
+		// ----- ANIMACION Y RENDERIZADO DEL VENDEDOR DE BEBIDAS -----
 		for (int j = 0; j < J_COUNT; j++) estadoVendedor[j] = 0.0f;
 		estadoVendedor[J_POSX] = X_CARRIL_VENDEDOR;
 		estadoVendedor[J_POSZ] = vendedorZ;
@@ -994,7 +1046,7 @@ int main()
 		glUniform1i(glGetUniformLocation(sh.Program, "useTexture"), 1);
 		glUniform4fv(glGetUniformLocation(sh.Program, "objectColor"), 1, glm::value_ptr(glm::vec4(1.0f)));
 
-		// Bandeja con cervezas
+		// Bandeja con cervezas delante del torso: las manos la sujetan por el borde trasero
 		DIBUJAR_MOV(sh, BandejaVendedor, mv.torso * Tr(0.0f, 0.10f, 0.64f));
 
 
@@ -1003,7 +1055,7 @@ int main()
 
 
 
-		// -----  reflectores -----
+		// ----- torres con reflectores -----
 		for (int i = 0; i < 4; i++)
 		{
 			float sx = (i % 2 == 0) ? -1.0f : 1.0f, sz = (i < 2) ? -1.0f : 1.0f;
@@ -1019,13 +1071,13 @@ int main()
 			{
 				float alto = (r + 1) * GR_ALZA + 0.45f;
 				float salto = 0.0f;
-				// Ola 
+				// Ola simple: sube cada grada un poco despues que la anterior
 				if (olaActiva) salto += 0.4f * fmaxf(0.0f, sinf(tiempo * 4.0f - m * 1.2f));
 				DIBUJAR(sh, *Filas[(m + r) % 4], base * Tr(0.0f, alto + salto, r * GR_PROF + 0.58f));
 			}
 		}
 
-		// ----- jugadores  -----
+		// ----- jugadores (modelado jerarquico) -----
 		MatJug mj;
 		for (int p = 0; p < 2; p++)
 		{
@@ -1055,7 +1107,7 @@ int main()
 			}
 			if (!ocultarCabeza) DIBUJAR_MOV(sh, Raqueta, mj.raqueta);
 		}
-		// recogepelotas
+		// recogepelotas: agachados en las esquinas, miran la pelota
 		for (int k = 0; k < 2; k++)
 		{
 			float v[J_COUNT];
@@ -1077,10 +1129,10 @@ int main()
 			}
 		}
 
-		// ----- mascota: perro vigila tunel -----
+		// ----- mascota: perro vigila tunel (Gato eliminado) -----
 		DIBUJAR(sh, Perro, Tr(3.9f, 0.38f, -17.6f) * Ry(180.0f) * Esc(1.0f));
 
-		// ----- pelota -----
+		// ----- pelota (dibujada un poco mas grande para que se vea) -----
 		if (pelotaVisible)
 		{
 			glm::vec3 pb = pelotaMundo;
@@ -1094,10 +1146,10 @@ int main()
 			DIBUJAR_MOV(sh, Pelota, Tr(pb.x, pb.y, pb.z) * Ry(tiempo * 300.0f) * Rx(tiempo * 200.0f) * Esc(1.8f) * Tr(0.0f, -0.0335f, 0.0f));
 		}
 
-		// ----- red -----
+		// ----- red (transparente) -----
 		};
 
-// ---- SOL PROFUNDIDAD----
+// ---- Pasada 1: mapa de profundidad desde el sol ----
 glm::vec3 ldir = glm::normalize(glm::vec3(-0.35f, -1.0f, -0.45f));
 glm::mat4 lightSpace = glm::ortho(-40.0f, 40.0f, -40.0f, 40.0f, 1.0f, 130.0f)
                      * glm::lookAt(-ldir * 60.0f, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -1112,7 +1164,7 @@ soloSombra = false;
 glBindFramebuffer(GL_FRAMEBUFFER, 0);
 glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-// ---- escena normal con sombras ----
+// ---- Pasada 2: escena normal con sombras ----
 lightingShader.Use();
 lightingShader.setMat4("lightSpaceMatrix", lightSpace);
 glActiveTexture(GL_TEXTURE5);
@@ -1174,6 +1226,16 @@ DibujarEscena(lightingShader);
 			glBindTexture(GL_TEXTURE_2D, 0);
 		}
 
+		// ----- pantallas gigantes: imagen que cambia cada 6 s (sin iluminacion, como una pantalla real) -----
+		{
+			int idx = (int)(tiempo / 6.0f) % 3;
+			modelShader.setFloat("brillo", 1.0f);
+			DIBUJAR(modelShader, *PantallaImg[idx], Tr(-PANTALLA_X, PANTALLA_Y, 0.0f) * Ry(90.0f));
+			DIBUJAR(modelShader, *PantallaImg[(idx + 1) % 3], Tr(PANTALLA_X, PANTALLA_Y, 0.0f) * Ry(-90.0f));
+			glBindVertexArray(0);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+
 		// ----- skybox -----
 		glDepthFunc(GL_LEQUAL);
 		skyboxShader.Use();
@@ -1187,14 +1249,14 @@ DibujarEscena(lightingShader);
 		glBindVertexArray(0);
 		glDepthFunc(GL_LESS);
 
-		// ----- controles -----
+		// ----- franja de controles (pegada al borde superior, ocupa todo el ancho) -----
 		if (mostrarControles && texControles)
 		{
-			float alto = 2.0f * ASPECTO_CONTROLES * (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;   
+			float alto = 2.0f * ASPECTO_CONTROLES * (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT;   // en coordenadas de pantalla (-1..1)
 			float yb = 1.0f - alto;
 			float quad[30] = {
 				-1.0f, 1.0f, 0.0f, 0.0f, 0.0f,   -1.0f, yb, 0.0f, 0.0f, 1.0f,   1.0f, yb, 0.0f, 1.0f, 1.0f,
-				-1.0f, 1.0f, 0.0f, 0.0f, 0.0f,    1.0f, yb, 0.0f, 1.0f, 1.0f,   1.0f, 1.0f, 0.0f, 1.0f, 0.0f }; 
+				-1.0f, 1.0f, 0.0f, 0.0f, 0.0f,    1.0f, yb, 0.0f, 1.0f, 1.0f,   1.0f, 1.0f, 0.0f, 1.0f, 0.0f };   // la imagen se carga sin voltear: v=0 es arriba
 			glDisable(GL_DEPTH_TEST);
 			modelShader.Use();
 			modelShader.setMat4("model", glm::mat4(1.0f));
